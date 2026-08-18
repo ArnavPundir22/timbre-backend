@@ -13,10 +13,8 @@ interface Recording {
   url: string
 }
 
-const API_URL = import.meta.env.VITE_API_URL || ''
-// Auto-derive WS URL from API_URL (https → wss, http → ws) or fall back to relative
-const WS_URL = import.meta.env.VITE_WS_URL ||
-  (API_URL ? API_URL.replace(/^https/, 'wss').replace(/^http/, 'ws') + '/socket' : '/socket')
+const API_URL = import.meta.env.VITE_API_URL || 'https://timbre-api-1eny.onrender.com'
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://timbre-api-1eny.onrender.com/socket'
 
 export default function App() {
   const [wasmOk, setWasmOk] = useState(false)
@@ -362,6 +360,9 @@ export default function App() {
     // Listen for room updates
     channel.on('user_joined', (msg: any) => {
       setMultiplayerParticipants((prev) => Array.from(new Set([...prev, msg.user_id])))
+      if (msg.user_id !== userIdRef.current && userIdRef.current) {
+        channel.push('user_joined', { user_id: userIdRef.current })
+      }
     })
 
     channel.on('recording_started', (msg: any) => {
