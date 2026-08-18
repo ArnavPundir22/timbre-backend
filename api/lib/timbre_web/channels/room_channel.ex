@@ -8,6 +8,13 @@ defmodule TimbreWeb.RoomChannel do
     {:ok, assign(socket, :room_id, room_id)}
   end
 
+  # When user joins room, broadcast user_joined to sync participants list
+  def handle_in("user_joined", %{"user_id" => user_id}, socket) do
+    socket = assign(socket, :user_id, user_id)
+    broadcast!(socket, "user_joined", %{user_id: user_id})
+    {:reply, :ok, socket}
+  end
+
   # When recording starts, client sends "start_recording" with their user_id
   def handle_in("start_recording", %{"user_id" => user_id}, socket) do
     room_id = socket.assigns.room_id
@@ -29,8 +36,14 @@ defmodule TimbreWeb.RoomChannel do
 
     if user_id do
       file_path = temp_file_path(room_id, user_id)
-      binary_data = Base.decode64!(base64_data)
-      File.write!(file_path, binary_data, [:append, :binary])
+
+      case Base.decode64(base64_data) do
+        {:ok, binary_data} ->
+          File.write!(file_path, binary_data, [:append, :binary])
+
+        _ ->
+          :ok
+      end
     end
 
     {:noreply, socket}

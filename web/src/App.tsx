@@ -350,6 +350,7 @@ export default function App() {
       .receive('ok', () => {
         setInRoom(true)
         setMultiplayerParticipants([randomUserId])
+        channel.push('user_joined', { user_id: randomUserId })
       })
       .receive('error', (resp: any) => {
         console.error('Failed to join channel:', resp)
@@ -357,6 +358,10 @@ export default function App() {
       })
 
     // Listen for room updates
+    channel.on('user_joined', (msg: any) => {
+      setMultiplayerParticipants((prev) => Array.from(new Set([...prev, msg.user_id])))
+    })
+
     channel.on('recording_started', (msg: any) => {
       setMultiplayerParticipants((prev) => Array.from(new Set([...prev, msg.user_id])))
       setMultiplayerStatus('recording')
@@ -400,8 +405,13 @@ export default function App() {
           view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
         }
         
-        // Base64 encode and push to channel
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+        // Safe Base64 encoding without argument stack overflow
+        const bytes = new Uint8Array(buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i])
+        }
+        const base64 = btoa(binary)
         channelRef.current?.push('audio_chunk', { data: base64 })
       }
 
