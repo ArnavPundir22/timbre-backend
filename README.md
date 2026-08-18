@@ -57,6 +57,16 @@ Run `just --list` for everything else (`db-setup`, `db-gen-migration`, `db-reset
 
 ---
 
+## 🎬 Application Demo Video
+
+<p align="center">
+  <video src="assets/DEMO.mp4" controls="controls" width="100%" style="max-width:800px; border-radius: 12px; shadow: 0 4px 12px rgba(0,0,0,0.15);">
+    Your browser does not support playing HTML5 video. You can view the demo video directly at <a href="assets/DEMO.mp4">assets/DEMO.mp4</a>.
+  </video>
+</p>
+
+---
+
 ## 🎙️ Submission Notes — What Was Built
 
 This repository has been updated with a complete implementation of the voice recording and processing assignment:
