@@ -69,9 +69,53 @@ export default function App() {
     loadRecordings()
   }, [])
 
+  const isRecordingRef = useRef(false)
+
   // Start single player recording
   const startRecording = async () => {
     setTranscriptText('')
+    isRecordingRef.current = true
+
+    // Synchronously start Speech Recognition in user click gesture before any await boundaries
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition()
+        recognition.continuous = true
+        recognition.interimResults = true
+        recognition.lang = navigator.language || 'en-US'
+
+        recognition.onresult = (event: any) => {
+          let fullText = ''
+          for (let i = 0; i < event.results.length; ++i) {
+            if (event.results[i] && event.results[i][0] && event.results[i][0].transcript) {
+              fullText += event.results[i][0].transcript + ' '
+            }
+          }
+          if (fullText.trim()) {
+            setTranscriptText(fullText.trim())
+          }
+        }
+
+        recognition.onerror = (e: any) => {
+          console.warn('SpeechRecognition error:', e.error)
+        }
+
+        recognition.onend = () => {
+          if (isRecordingRef.current) {
+            try {
+              recognition.start()
+            } catch (err) {}
+          }
+        }
+
+        recognitionRef.current = recognition
+        recognition.start()
+      } catch (e) {
+        console.warn('SpeechRecognition start error:', e)
+      }
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
@@ -103,30 +147,6 @@ export default function App() {
         setTranscriptText((prev) => (prev && prev.trim() !== '' ? prev : `Voice audio captured via microphone (${durSec}s duration).`))
       }
 
-      // Speech Recognition for live transcripts
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition()
-          recognition.continuous = true
-          recognition.interimResults = true
-          recognition.lang = 'en-US'
-
-          recognition.onresult = (event: any) => {
-            let fullText = ''
-            for (let i = 0; i < event.results.length; ++i) {
-              fullText += event.results[i][0].transcript + ' '
-            }
-            setTranscriptText(fullText.trim())
-          }
-
-          recognitionRef.current = recognition
-          recognition.start()
-        } catch (e) {
-          console.warn('SpeechRecognition not available:', e)
-        }
-      }
-
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
@@ -137,6 +157,7 @@ export default function App() {
 
   // Stop recording
   const stopRecording = () => {
+    isRecordingRef.current = false
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop()
