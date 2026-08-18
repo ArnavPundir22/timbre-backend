@@ -14,7 +14,9 @@ interface Recording {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || ''
-const WS_URL = import.meta.env.VITE_WS_URL || '/socket'
+// Auto-derive WS URL from API_URL (https → wss, http → ws) or fall back to relative
+const WS_URL = import.meta.env.VITE_WS_URL ||
+  (API_URL ? API_URL.replace(/^https/, 'wss').replace(/^http/, 'ws') + '/socket' : '/socket')
 
 export default function App() {
   const [wasmOk, setWasmOk] = useState(false)
@@ -318,9 +320,18 @@ export default function App() {
     const randomUserId = `User_${Math.random().toString(36).substring(2, 6)}`
     setUserId(randomUserId)
 
-    // Connect to Phoenix Socket
-    const socket = new Socket(WS_URL, {})
+    // Connect to Phoenix Socket with reconnect strategy
+    const socket = new Socket(WS_URL, {
+      reconnectAfterMs: (tries: number) => [1000, 2000, 5000, 10000][tries - 1] || 10000,
+    })
     socketRef.current = socket
+
+    socket.onError(() => {
+      console.error('WebSocket connection error - backend may be waking up')
+      setMultiplayerStatus('idle')
+      alert('⏳ Backend is waking up (Render free tier). Please wait 15-30 seconds and try again.')
+    })
+
     socket.connect()
 
     // Join room channel
@@ -334,7 +345,7 @@ export default function App() {
       })
       .receive('error', (resp: any) => {
         console.error('Failed to join channel:', resp)
-        alert('Could not join multiplayer room.')
+        alert('Could not join multiplayer room. Backend may be starting up — try again in 20 seconds.')
       })
 
     // Listen for room updates
