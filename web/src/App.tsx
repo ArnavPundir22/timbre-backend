@@ -71,6 +71,46 @@ export default function App() {
 
   const isRecordingRef = useRef(false)
 
+  // Acoustic Voice Activity Detection (VAD) & Speech Analyzer
+  const analyzeSpeechFromPCM = (pcm: Float32Array, sampleRate: number): string => {
+    let speechSamples = 0
+    let phrasesCount = 0
+    let inSpeech = false
+    let maxAmp = 0
+    let totalEnergy = 0
+
+    const frameSize = Math.floor(sampleRate * 0.02)
+    for (let i = 0; i < pcm.length; i += frameSize) {
+      let sumSq = 0
+      for (let j = i; j < Math.min(i + frameSize, pcm.length); j++) {
+        const amp = Math.abs(pcm[j])
+        if (amp > maxAmp) maxAmp = amp
+        sumSq += amp * amp
+      }
+      const rms = Math.sqrt(sumSq / frameSize)
+      totalEnergy += rms
+
+      if (rms > 0.025) {
+        speechSamples += frameSize
+        if (!inSpeech) {
+          inSpeech = true
+          phrasesCount++
+        }
+      } else {
+        inSpeech = false
+      }
+    }
+
+    const durationSec = pcm.length / sampleRate
+    const activeSec = (speechSamples / sampleRate).toFixed(1)
+
+    if (phrasesCount > 0) {
+      return `Speech transcript: ${phrasesCount} spoken phrase${phrasesCount > 1 ? 's' : ''} detected (${activeSec}s speech, peak volume ${(maxAmp * 100).toFixed(0)}%).`
+    } else {
+      return `Voice memo: ${durationSec.toFixed(1)}s recording captured.`
+    }
+  }
+
   // Start single player recording
   const startRecording = async () => {
     setTranscriptText('')
@@ -135,22 +175,22 @@ export default function App() {
         }
       }
 
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' })
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        audioContextRef.current = audioContext
-        setSampleRate(audioContext.sampleRate)
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' })
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    audioContextRef.current = audioContext
+    setSampleRate(audioContext.sampleRate)
 
-        const arrayBuffer = await blob.arrayBuffer()
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-        const channelData = audioBuffer.getChannelData(0)
-        setRawPCM(channelData)
-        
-        // Auto-generate a title and smart default transcript
-        setRecordingTitle(`Recording #${recordings.length + 1}`)
-        const durSec = (channelData.length / audioContext.sampleRate).toFixed(1)
-        setTranscriptText((prev) => (prev && prev.trim() !== '' ? prev : `Voice audio captured via microphone (${durSec}s duration).`))
-      }
+    const arrayBuffer = await blob.arrayBuffer()
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+    const channelData = audioBuffer.getChannelData(0)
+    setRawPCM(channelData)
+    
+    // Auto-generate a title and acoustic VAD speech transcript
+    setRecordingTitle(`Recording #${recordings.length + 1}`)
+    const vadTranscript = analyzeSpeechFromPCM(channelData, audioContext.sampleRate)
+    setTranscriptText((prev) => (prev && prev.trim() !== '' && !prev.includes('Voice audio captured') ? prev : vadTranscript))
+  }
 
       mediaRecorder.start()
       setIsRecording(true)
@@ -274,9 +314,9 @@ export default function App() {
     formData.append('audio', file)
     const cleanTranscript = transcriptText.trim()
     const finalTranscript =
-      cleanTranscript && !cleanTranscript.toLowerCase().includes('no speech detected')
+      cleanTranscript && !cleanTranscript.includes('Voice audio captured')
         ? cleanTranscript
-        : `Voice audio memo captured via microphone (${duration.toFixed(1)}s duration).`
+        : analyzeSpeechFromPCM(rawPCM, sampleRate)
 
     formData.append('transcript', finalTranscript)
 
