@@ -139,11 +139,9 @@ export default function App() {
               fullText += event.results[i][0].transcript + ' '
             }
           }
-          if (fullText.trim()) {
-            setTranscriptText((prev) => {
-              const current = prev && !prev.includes('Voice audio captured') ? prev : ''
-              return (current + ' ' + fullText.trim()).trim()
-            })
+          const cleanText = fullText.trim()
+          if (cleanText) {
+            setTranscriptText(cleanText)
           }
         }
 
@@ -206,7 +204,9 @@ export default function App() {
       const transcriber = await getWhisperTranscriber()
       const output = await transcriber(resampledPCM)
       if (output && output.text && output.text.trim()) {
-        const text = output.text.trim()
+        let text = output.text.trim()
+        // Deduplicate repeating word loops like "hello everyone hello everyone"
+        text = text.replace(/\b(\w+(?:\s+\w+){0,3})\s+\1\b/gi, '$1')
         setTranscriptText(text)
         return text
       }
