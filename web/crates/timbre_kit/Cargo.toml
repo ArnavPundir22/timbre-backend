@@ -1,0 +1,17 @@
+[package]
+name = "timbre_kit"
+version = "0.1.0"
+edition = "2021"
+
+# cdylib -> the .wasm we ship to the browser; rlib -> so `cargo test` (native)
+# can exercise the same code without wasm-bindgen in the way.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned to the wasm-bindgen-cli version the flake provides, so wasm-pack reuses
+# that binary instead of trying to cargo-install a matching CLI.
+wasm-bindgen = "=0.2.108"
+
+[profile.release]
+opt-level = "s"
