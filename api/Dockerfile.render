@@ -24,4 +24,4 @@ ENV MIX_ENV="prod"
 ENV PHX_SERVER="true"
 RUN mkdir -p /data
 EXPOSE 10000
-CMD ["/app/bin/timbre", "start"]
+CMD ["sh", "-c", "/app/bin/timbre eval 'Timbre.Release.migrate' && /app/bin/timbre start"]
