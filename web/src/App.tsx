@@ -48,6 +48,7 @@ export default function App() {
   const [inRoom, setInRoom] = useState(false)
   const [multiplayerParticipants, setMultiplayerParticipants] = useState<string[]>([])
   const [multiplayerStatus, setMultiplayerStatus] = useState<string>('idle')
+  const socketErrorShown = useRef(false)
 
   // Refs for audio processing
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -328,8 +329,15 @@ export default function App() {
 
     socket.onError(() => {
       console.error('WebSocket connection error - backend may be waking up')
+      if (!socketErrorShown.current) {
+        socketErrorShown.current = true
+        setMultiplayerStatus('waking')
+      }
+    })
+
+    socket.onOpen(() => {
+      socketErrorShown.current = false
       setMultiplayerStatus('idle')
-      alert('⏳ Backend is waking up (Render free tier). Please wait 15-30 seconds and try again.')
     })
 
     socket.connect()
@@ -641,8 +649,13 @@ export default function App() {
             {!inRoom ? (
               <div className="space-y-4">
                 <p className="text-sm text-mute">Join a multiplayer session to record audio collaboratively with peers and mix your streams into one file.</p>
+                {multiplayerStatus === 'waking' && (
+                  <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs text-yellow-400 animate-pulse">
+                    ⏳ Backend is waking up on Render free tier… this takes 15–30 seconds. Will connect automatically.
+                  </div>
+                )}
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={createRoom}
                     className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md"
                   >
