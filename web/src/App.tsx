@@ -52,7 +52,7 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const processorNodeRef = useRef<ScriptProcessorNode | null>(null)
+  const processorNodeRef = useRef<ScriptProcessorNode | AudioWorkletNode | any | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const channelRef = useRef<Channel | null>(null)
   const userIdRef = useRef<string>('')
@@ -396,36 +396,82 @@ export default function App() {
       audioContextRef.current = audioContext
 
       const source = audioContext.createMediaStreamSource(stream)
-      
-      // ScriptProcessorNode for chunking audio raw PCM
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      processorNodeRef.current = processor
-
       const activeUserId = userIdRef.current || userId
 
       // Tell backend we are starting
       channelRef.current.push('start_recording', { user_id: activeUserId })
 
-      processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0)
-        
-        // Convert Float32 to 16-bit PCM Buffer
-        const buffer = new ArrayBuffer(input.length * 2)
-        const view = new DataView(buffer)
-        for (let i = 0; i < input.length; i++) {
-          const s = Math.max(-1, Math.min(1, input[i]))
-          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+      if (audioContext.audioWorklet) {
+        // Modern non-deprecated AudioWorkletNode
+        const workletCode = `
+          class PcmProcessor extends AudioWorkletProcessor {
+            process(inputs) {
+              const input = inputs[0];
+              if (input && input[0] && input[0].length > 0) {
+                this.port.postMessage(new Float32Array(input[0]));
+              }
+              return true;
+            }
+          }
+          registerProcessor('pcm-processor', PcmProcessor);
+        `
+        const blob = new Blob([workletCode], { type: 'application/javascript' })
+        const workletUrl = URL.createObjectURL(blob)
+        await audioContext.audioWorklet.addModule(workletUrl)
+        URL.revokeObjectURL(workletUrl)
+
+        const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor')
+        processorNodeRef.current = workletNode
+
+        workletNode.port.onmessage = (e) => {
+          const input = e.data as Float32Array
+          const buffer = new ArrayBuffer(input.length * 2)
+          const view = new DataView(buffer)
+          for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]))
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+          }
+
+          const bytes = new Uint8Array(buffer)
+          let binary = ''
+          const chunkSize = 0x8000
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
+          }
+          const base64 = btoa(binary)
+          channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
         }
-        
-        // Ultra-fast zero-lag Base64 encoding
-        const bytes = new Uint8Array(buffer)
-        let binary = ''
-        const chunkSize = 0x8000
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
+
+        source.connect(workletNode)
+      } else {
+        // Legacy ScriptProcessorNode fallback
+        const processor = audioContext.createScriptProcessor(4096, 1, 1)
+        processorNodeRef.current = processor
+
+        processor.onaudioprocess = (e) => {
+          const input = e.inputBuffer.getChannelData(0)
+          const buffer = new ArrayBuffer(input.length * 2)
+          const view = new DataView(buffer)
+          for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]))
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+          }
+
+          const bytes = new Uint8Array(buffer)
+          let binary = ''
+          const chunkSize = 0x8000
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
+          }
+          const base64 = btoa(binary)
+          channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
         }
-        const base64 = btoa(binary)
-        channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
+
+        const gainNode = audioContext.createGain()
+        gainNode.gain.value = 0
+        source.connect(processor)
+        processor.connect(gainNode)
+        gainNode.connect(audioContext.destination)
       }
 
       // Speech Recognition for real-time multiplayer transcripts
@@ -457,12 +503,6 @@ export default function App() {
         }
       }
 
-      const gainNode = audioContext.createGain()
-      gainNode.gain.value = 0
-
-      source.connect(processor)
-      processor.connect(gainNode)
-      gainNode.connect(audioContext.destination)
       setMultiplayerStatus('recording')
     } catch (err) {
       console.error('Multiplayer recording failed:', err)
