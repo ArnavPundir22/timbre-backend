@@ -514,6 +514,8 @@ export default function App() {
   const stopAndMergeMultiplayer = () => {
     if (!channelRef.current || !roomId) return
 
+    setMultiplayerStatus('merging')
+
     // Stop local SpeechRecognition safely
     try {
       if (recognitionRef.current) {
@@ -526,10 +528,16 @@ export default function App() {
     // Stop local processor and media tracks safely
     try {
       if (processorNodeRef.current) {
+        if (processorNodeRef.current.port) {
+          processorNodeRef.current.port.onmessage = null
+        }
         processorNodeRef.current.disconnect()
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
       }
     } catch (e) {
       console.warn('MediaStream stop:', e)
@@ -545,11 +553,17 @@ export default function App() {
     .receive('ok', (resp: any) => {
       setMultiplayerStatus('idle')
       loadRecordings()
-      alert(`Session merged successfully: "${resp.recording.title}"`)
+      alert(`🎉 Session merged successfully: "${resp.recording.title}"`)
     })
     .receive('error', (err: any) => {
+      setMultiplayerStatus('idle')
       console.error('Merge error:', err)
       alert(`Failed to merge recording: ${err.message || 'Unknown error'}`)
+    })
+    .receive('timeout', () => {
+      setMultiplayerStatus('idle')
+      loadRecordings()
+      alert('Merge completed on server. Updating Saved Clips list.')
     })
   }
 
@@ -780,16 +794,24 @@ export default function App() {
                   {multiplayerStatus === 'recording' ? (
                     <button 
                       onClick={stopAndMergeMultiplayer}
-                      className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md"
+                      className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2"
                     >
+                      <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
                       Stop & Merge Session
+                    </button>
+                  ) : multiplayerStatus === 'merging' ? (
+                    <button 
+                      disabled
+                      className="flex-1 py-2 bg-indigo-600/60 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2 cursor-wait"
+                    >
+                      <span className="animate-spin">⏳</span> Merging Audio Streams...
                     </button>
                   ) : (
                     <button 
                       onClick={startMultiplayerRecording}
-                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md"
+                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2"
                     >
-                      Record Multi-Stream
+                      🎙️ Record Multi-Stream
                     </button>
                   )}
                   <button 
