@@ -417,11 +417,12 @@ export default function App() {
           view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
         }
         
-        // Safe Base64 encoding without argument stack overflow
+        // Ultra-fast zero-lag Base64 encoding
         const bytes = new Uint8Array(buffer)
         let binary = ''
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i])
+        const chunkSize = 0x8000
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
         }
         const base64 = btoa(binary)
         channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
@@ -430,26 +431,30 @@ export default function App() {
       // Speech Recognition for real-time multiplayer transcripts
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (SpeechRecognition) {
-        const recognition = new SpeechRecognition()
-        recognition.continuous = true
-        recognition.interimResults = false
-        recognition.lang = 'en-US'
+        try {
+          const recognition = new SpeechRecognition()
+          recognition.continuous = true
+          recognition.interimResults = false
+          recognition.lang = 'en-US'
 
-        let localTranscript = ''
-        recognition.onresult = (event: any) => {
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              localTranscript += event.results[i][0].transcript + ' '
+          let localTranscript = ''
+          recognition.onresult = (event: any) => {
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                localTranscript += event.results[i][0].transcript + ' '
+              }
             }
+            const text = localTranscript.trim()
+            setTranscriptText(text)
+            // Stream transcript to server in real-time
+            channelRef.current?.push('submit_transcript', { transcript: text })
           }
-          const text = localTranscript.trim()
-          setTranscriptText(text)
-          // Stream transcript to server in real-time
-          channelRef.current?.push('submit_transcript', { transcript: text })
-        }
 
-        recognitionRef.current = recognition
-        recognition.start()
+          recognitionRef.current = recognition
+          recognition.start()
+        } catch (recErr) {
+          console.warn('SpeechRecognition warning:', recErr)
+        }
       }
 
       const gainNode = audioContext.createGain()
