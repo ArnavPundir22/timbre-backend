@@ -68,7 +68,7 @@ This repository has been updated with a complete implementation of the voice rec
   * 💻 **[React Frontend Architecture](docs/frontend.md)** — Audio recording, playback, and Speech Recognition.
   * ⚙️ **[Phoenix Elixir API & DB Schema](docs/backend.md)** — Database models, Ecto migrations, and controllers.
   * 👥 **[Multiplayer Real-time Collaboration](docs/multiplayer.md)** — Real-time WebSockets, streaming, and channel mixing.
-* **Deployed URL**: **[https://web-delta-red-27.vercel.app](https://web-delta-red-27.vercel.app)** (connected to Render API backend at `https://timbre-api-1eny.onrender.com`)
+* **Deployed URL**: **[https://timbre-arnav.vercel.app](https://timbre-arnav.vercel.app)** (connected to Render API backend at `https://timbre-api-1eny.onrender.com`)
 
 ---
 
