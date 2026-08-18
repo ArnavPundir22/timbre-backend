@@ -48,14 +48,15 @@ defmodule TimbreWeb.RoomChannel do
     {:noreply, socket}
   end
 
-  # When recording stops, host sends "stop_recording" with list of user_ids in the session
-  def handle_in("stop_recording", %{"user_ids" => user_ids, "title" => title}, socket) do
+  # When recording stops, host sends "stop_recording"
+  def handle_in("stop_recording", params, socket) do
     room_id = socket.assigns.room_id
+    title = Map.get(params, "title", "Merged Multiplayer Session")
     dir = uploads_dir()
 
-    # Find all temp files for this room session
-    file_paths = Enum.map(user_ids, fn uid -> temp_file_path(room_id, uid) end)
-    existing_paths = Enum.filter(file_paths, &File.exists?/1)
+    # Find ALL temp raw audio files created for this room session
+    pattern = Path.join(dir, "temp_#{room_id}_*.raw")
+    existing_paths = Path.wildcard(pattern)
 
     if existing_paths != [] do
       unique_filename = "merged_#{room_id}_#{System.system_time(:millisecond)}.wav"
@@ -75,20 +76,17 @@ defmodule TimbreWeb.RoomChannel do
           _ -> 0.0
         end
 
-      # Read transcripts from temporary text files submitted by participants
-      transcripts =
-        Enum.map(user_ids, fn uid ->
-          txt_path = Path.join(dir, "temp_#{room_id}_#{uid}.txt")
+      # Find and combine all transcript text files for this room
+      txt_pattern = Path.join(dir, "temp_#{room_id}_*.txt")
+      txt_files = Path.wildcard(txt_pattern)
 
-          if File.exists?(txt_path) do
-            content = File.read!(txt_path)
-            File.rm!(txt_path)
-            "#{uid}: #{String.trim(content)}"
-          else
-            nil
-          end
+      transcripts =
+        Enum.map(txt_files, fn txt_path ->
+          content = File.read!(txt_path)
+          File.rm!(txt_path)
+          String.trim(content)
         end)
-        |> Enum.filter(& &1)
+        |> Enum.filter(&(&1 != ""))
         |> Enum.join("\n")
 
       transcript =
@@ -123,7 +121,10 @@ defmodule TimbreWeb.RoomChannel do
           {:reply, {:error, %{message: "Database insertion failed"}}, socket}
       end
     else
-      {:reply, {:error, %{message: "No audio streams found"}}, socket}
+      {:reply,
+       {:error,
+        %{message: "No audio recorded yet. Click 'Record Multi-Stream' first to capture audio!"}},
+       socket}
     end
   end
 

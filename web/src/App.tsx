@@ -57,6 +57,7 @@ export default function App() {
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const channelRef = useRef<Channel | null>(null)
+  const userIdRef = useRef<string>('')
 
   // Initialize WASM
   useEffect(() => {
@@ -319,6 +320,7 @@ export default function App() {
 
   const joinMultiplayerRoom = (targetRoomId: string) => {
     const randomUserId = `User_${Math.random().toString(36).substring(2, 6)}`
+    userIdRef.current = randomUserId
     setUserId(randomUserId)
 
     // Connect to Phoenix Socket with reconnect strategy
@@ -391,8 +393,10 @@ export default function App() {
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
       processorNodeRef.current = processor
 
+      const activeUserId = userIdRef.current || userId
+
       // Tell backend we are starting
-      channelRef.current.push('start_recording', { user_id: userId })
+      channelRef.current.push('start_recording', { user_id: activeUserId })
 
       processor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0)
@@ -412,7 +416,7 @@ export default function App() {
           binary += String.fromCharCode(bytes[i])
         }
         const base64 = btoa(binary)
-        channelRef.current?.push('audio_chunk', { data: base64 })
+        channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
       }
 
       // Speech Recognition for real-time multiplayer transcripts
