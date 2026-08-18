@@ -76,12 +76,14 @@ export default function App() {
     setTranscriptText('')
     isRecordingRef.current = true
 
-    // Synchronously start Speech Recognition in user click gesture before any await boundaries
+    // Synchronously start Speech Recognition in user click gesture
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (SpeechRecognition) {
       try {
         const recognition = new SpeechRecognition()
-        recognition.continuous = true
+        // Mobile Chrome/Android & Safari perform best with continuous = false
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        recognition.continuous = !isMobile
         recognition.interimResults = true
         recognition.lang = navigator.language || 'en-US'
 
@@ -93,7 +95,10 @@ export default function App() {
             }
           }
           if (fullText.trim()) {
-            setTranscriptText(fullText.trim())
+            setTranscriptText((prev) => {
+              const current = prev && !prev.includes('Voice audio captured') ? prev : ''
+              return (current + ' ' + fullText.trim()).trim()
+            })
           }
         }
 
