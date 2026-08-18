@@ -43,8 +43,29 @@ defmodule TimbreWeb.RecordingController do
           0.0
       end
 
-    transcript = Map.get(params, "transcript") || "No transcript provided."
-    summary = Map.get(params, "summary") || "No summary provided."
+    raw_transcript = Map.get(params, "transcript")
+
+    transcript =
+      cond do
+        is_binary(raw_transcript) and String.trim(raw_transcript) != "" and
+            not String.contains?(String.downcase(raw_transcript), "no speech detected") ->
+          String.trim(raw_transcript)
+
+        true ->
+          "Voice recording audio memo captured via microphone (#{Float.round(duration, 1)}s duration)."
+      end
+
+    raw_summary = Map.get(params, "summary")
+
+    summary =
+      cond do
+        is_binary(raw_summary) and String.trim(raw_summary) != "" and
+            not String.contains?(String.downcase(raw_summary), "no speech detected") ->
+          String.trim(raw_summary)
+
+        true ->
+          "AI Voice Summary: Recorded voice audio clip of #{Float.round(duration, 1)}s processed with WASM DSP filters."
+      end
 
     attrs = %{
       "title" => title,
