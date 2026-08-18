@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: timbre-api
+    env: docker
+    dockerfilePath: api/Dockerfile.render
+    plan: free
+    region: singapore
+    envVars:
+      - key: MIX_ENV
+        value: prod
+      - key: DATABASE_PATH
+        value: /data/timbre.db
+      - key: PORT
+        value: 10000
+      - key: SECRET_KEY_BASE
+        generateValue: true
+    disk:
+      name: timbre-db-disk
+      mountPath: /data
+      sizeGB: 1
