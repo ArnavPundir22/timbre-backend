@@ -62,7 +62,12 @@ Run `just --list` for everything else (`db-setup`, `db-gen-migration`, `db-reset
 This repository has been updated with a complete implementation of the voice recording and processing assignment:
 
 * **What was built**: A collaborative voice recorder where you can record audio locally, apply in-browser DSP audio effects (Gain, Normalize, Low-pass filter) via a Rust WebAssembly module (`timbre_kit`), save/delete files from the backend API, and join multiplayer sessions via a shared link to record and merge multiple microphone streams in real-time.
-* **Architecture & Details**: Complete system documentation has been written to the `/docs` folder. Start here: **[timbre/docs/README.md](docs/README.md)**.
+* **Architecture & Details**: Complete production-grade system documentation is structured into the following pages:
+  * 📑 **[System Documentation Index](docs/README.md)** — Architectural overview and guide.
+  * 🎛️ **[Rust WASM DSP Module](docs/wasm_dsp.md)** — In-browser audio processing and effects.
+  * 💻 **[React Frontend Architecture](docs/frontend.md)** — Audio recording, playback, and Speech Recognition.
+  * ⚙️ **[Phoenix Elixir API & DB Schema](docs/backend.md)** — Database models, Ecto migrations, and controllers.
+  * 👥 **[Multiplayer Real-time Collaboration](docs/multiplayer.md)** — Real-time WebSockets, streaming, and channel mixing.
 * **Deployed URL**: **[https://web-delta-red-27.vercel.app](https://web-delta-red-27.vercel.app)** (connected to Render API backend at `https://timbre-api-1eny.onrender.com`)
 
 ---
