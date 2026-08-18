@@ -1,5 +1,5 @@
 # Stage 1: Build the Phoenix release
-FROM hexpm/elixir:1.17.2-erlang-27.0.1-debian-bookworm-20240612-slim AS elixir-builder
+FROM elixir:1.17.2-slim AS elixir-builder
 RUN apt-get update -y && apt-get install -y build-essential git && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/api
 RUN mix local.hex --force && mix local.rebar --force
