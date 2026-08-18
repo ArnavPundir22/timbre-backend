@@ -741,7 +741,7 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    <audio src={recording.url} controls className="w-full h-8 scale-95 origin-left" />
+                    <audio src={recording.url.startsWith('http') ? recording.url : `${API_URL}${recording.url}`} controls className="w-full h-8 scale-95 origin-left" />
                     {recording.summary && (
                       <div className="text-[11px] bg-canvas p-2 border border-hairline rounded-lg text-body">
                         <span className="font-semibold text-ink">AI Summary: </span>
