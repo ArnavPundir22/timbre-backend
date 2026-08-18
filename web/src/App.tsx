@@ -97,8 +97,10 @@ export default function App() {
         const channelData = audioBuffer.getChannelData(0)
         setRawPCM(channelData)
         
-        // Auto-generate a title
+        // Auto-generate a title and smart default transcript
         setRecordingTitle(`Recording #${recordings.length + 1}`)
+        const durSec = (channelData.length / audioContext.sampleRate).toFixed(1)
+        setTranscriptText((prev) => (prev && prev.trim() !== '' ? prev : `Voice audio captured via microphone (${durSec}s duration).`))
       }
 
       // Speech Recognition for live transcripts
@@ -244,11 +246,10 @@ export default function App() {
     formData.append('title', recordingTitle)
     formData.append('duration_seconds', duration.toString())
     formData.append('audio', file)
-    formData.append('transcript', transcriptText || 'No speech detected.')
+    const finalTranscript = transcriptText.trim() || `Voice audio clip (${duration.toFixed(1)}s duration).`
+    formData.append('transcript', finalTranscript)
     
-    const summaryText = transcriptText.trim()
-      ? `Voice memo transcript: "${transcriptText.substring(0, 100)}${transcriptText.length > 100 ? '...' : ''}"`
-      : `Audio clip (${duration.toFixed(1)}s, ${sampleRate}Hz) with WASM DSP effects (Gain: ${gain}x, Normalized: ${shouldNormalize ? 'Yes' : 'No'}, LowPass: ${shouldLowPass ? lowPassCutoff + 'Hz' : 'Off'}).`
+    const summaryText = `Voice memo: "${finalTranscript.substring(0, 100)}${finalTranscript.length > 100 ? '...' : ''}" (WASM DSP: Gain ${gain}x, Normalized ${shouldNormalize ? 'Yes' : 'No'}, LowPass ${shouldLowPass ? lowPassCutoff + 'Hz' : 'Off'})`
     formData.append('summary', summaryText)
 
     try {
