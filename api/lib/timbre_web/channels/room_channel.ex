@@ -128,11 +128,12 @@ defmodule TimbreWeb.RoomChannel do
     end
   end
 
-  def handle_in("submit_transcript", %{"transcript" => transcript}, socket) do
+  def handle_in("submit_transcript", payload, socket) do
     room_id = socket.assigns.room_id
-    user_id = socket.assigns.user_id
+    user_id = payload["user_id"] || socket.assigns[:user_id]
+    transcript = payload["transcript"]
 
-    if user_id && String.trim(transcript) != "" do
+    if user_id && transcript && String.trim(transcript) != "" do
       file_path = Path.join(uploads_dir(), "temp_#{room_id}_#{user_id}.txt")
       File.write!(file_path, String.trim(transcript))
     end

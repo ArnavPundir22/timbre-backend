@@ -442,7 +442,11 @@ export default function App() {
           channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
         }
 
+        const gainNode = audioContext.createGain()
+        gainNode.gain.value = 0
         source.connect(workletNode)
+        workletNode.connect(gainNode)
+        gainNode.connect(audioContext.destination)
       } else {
         // Legacy ScriptProcessorNode fallback
         const processor = audioContext.createScriptProcessor(4096, 1, 1)
@@ -492,8 +496,8 @@ export default function App() {
             }
             const text = localTranscript.trim()
             setTranscriptText(text)
-            // Stream transcript to server in real-time
-            channelRef.current?.push('submit_transcript', { transcript: text })
+            // Stream transcript to server in real-time with user_id
+            channelRef.current?.push('submit_transcript', { transcript: text, user_id: activeUserId })
           }
 
           recognitionRef.current = recognition
