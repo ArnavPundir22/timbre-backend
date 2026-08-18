@@ -15,7 +15,12 @@ defmodule TimbreWeb.RecordingController do
     dir = uploads_dir()
 
     # Generate unique filename
-    ext = Path.extname(original_filename) || ".wav"
+    ext =
+      case Path.extname(original_filename) do
+        "" -> ".wav"
+        other -> other
+      end
+
     unique_filename = "#{System.system_time(:millisecond)}_#{:rand.uniform(1000)}#{ext}"
     dest_path = Path.join(dir, unique_filename)
 
