@@ -131,40 +131,30 @@ defmodule TimbreWeb.RoomChannel do
   end
 
   defp mix_pcm_files(file_paths, output_wav_path, sample_rate \\ 44100) do
-    # Read all files
-    streams = Enum.map(file_paths, &File.read!/1)
-
-    # Convert binary to list of 16-bit signed integers
-    # Match little endian format from JS wav construction
-    int_lists =
-      Enum.map(streams, fn binary ->
-        for <<val::signed-integer-size(16)-little <- binary>>, do: val
-      end)
-
-    # Find the maximum length among all streams
-    max_len = Enum.map(int_lists, &length/1) |> Enum.max(fn -> 0 end)
-
-    # Pad lists to the same length with zeros
-    padded_lists =
-      Enum.map(int_lists, fn list ->
-        list ++ List.duplicate(0, max_len - length(list))
-      end)
-
-    # Mix them by summing elements
-    mixed_ints =
-      padded_lists
-      |> List.zip()
-      |> Enum.map(fn tuple ->
-        sum = Tuple.to_list(tuple) |> Enum.sum()
-        # Clamp to signed 16-bit int range
-        max(min(sum, 32767), -32768)
-      end)
-
-    # Convert mixed integers back to binary
-    mixed_binary = for val <- mixed_ints, into: <<>>, do: <<val::signed-integer-size(16)-little>>
-
-    # Write WAV file with header
+    binaries = Enum.map(file_paths, &File.read!/1)
+    mixed_binary = mix_binaries(binaries, []) |> :erlang.list_to_binary()
     write_wav(output_wav_path, mixed_binary, sample_rate)
+  end
+
+  defp mix_binaries(binaries, acc) do
+    if Enum.all?(binaries, &(&1 == <<>>)) do
+      Enum.reverse(acc)
+    else
+      {sum, next_binaries} =
+        Enum.map_reduce(binaries, 0, fn
+          <<sample::signed-integer-size(16)-little, rest::binary>>, acc_sum ->
+            {rest, acc_sum + sample}
+
+          <<>>, acc_sum ->
+            {<<>>, acc_sum}
+
+          _other, acc_sum ->
+            {<<>>, acc_sum}
+        end)
+
+      clamped = max(min(sum, 32767), -32768)
+      mix_binaries(next_binaries, [<<clamped::signed-integer-size(16)-little>> | acc])
+    end
   end
 
   defp write_wav(path, data_binary, sample_rate) do
