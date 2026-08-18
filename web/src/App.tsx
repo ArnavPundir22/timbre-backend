@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import init, { rms_level, apply_gain, normalize, low_pass_filter } from 'timbre_kit'
+import { pipeline, env } from '@xenova/transformers'
+
+env.allowLocalModels = false
 
 interface Recording {
   id: string
@@ -26,6 +29,7 @@ export default function App() {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [recordingTitle, setRecordingTitle] = useState('')
   const [isUploading, setIsUploading] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
   
   // WASM DSP parameters
   const [gain, setGain] = useState<number>(1.0)
@@ -37,11 +41,12 @@ export default function App() {
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [transcriptText, setTranscriptText] = useState('')
   
-  // Refs for audio processing
+  // Refs for audio processing and AI Whisper pipeline
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const recognitionRef = useRef<any>(null)
+  const transcriberRef = useRef<any>(null)
 
   // Initialize WASM Module
   useEffect(() => {
@@ -175,6 +180,44 @@ export default function App() {
         }
       }
 
+  const getWhisperTranscriber = async () => {
+    if (!transcriberRef.current) {
+      transcriberRef.current = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en')
+    }
+    return transcriberRef.current
+  }
+
+  const resampleTo16k = (audioBuffer: Float32Array, originalSampleRate: number): Float32Array => {
+    if (originalSampleRate === 16000) return audioBuffer
+    const ratio = originalSampleRate / 16000
+    const newLength = Math.round(audioBuffer.length / ratio)
+    const result = new Float32Array(newLength)
+    for (let i = 0; i < newLength; i++) {
+      const origIndex = Math.floor(i * ratio)
+      result[i] = audioBuffer[origIndex] || 0
+    }
+    return result
+  }
+
+  const runWhisperTranscription = async (pcm: Float32Array, originalSampleRate: number) => {
+    setIsTranscribing(true)
+    try {
+      const resampledPCM = resampleTo16k(pcm, originalSampleRate)
+      const transcriber = await getWhisperTranscriber()
+      const output = await transcriber(resampledPCM)
+      if (output && output.text && output.text.trim()) {
+        const text = output.text.trim()
+        setTranscriptText(text)
+        return text
+      }
+    } catch (err) {
+      console.warn('Whisper AI Transcription warning:', err)
+    } finally {
+      setIsTranscribing(false)
+    }
+    return null
+  }
+
   mediaRecorder.onstop = async () => {
     const blob = new Blob(chunks, { type: 'audio/webm' })
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -186,10 +229,15 @@ export default function App() {
     const channelData = audioBuffer.getChannelData(0)
     setRawPCM(channelData)
     
-    // Auto-generate a title and acoustic VAD speech transcript
+    // Auto-generate title
     setRecordingTitle(`Recording #${recordings.length + 1}`)
+    
+    // 1. Initial acoustic VAD speech fallback
     const vadTranscript = analyzeSpeechFromPCM(channelData, audioContext.sampleRate)
     setTranscriptText((prev) => (prev && prev.trim() !== '' && !prev.includes('Voice audio captured') ? prev : vadTranscript))
+
+    // 2. Exact word-for-word speech transcription using OpenAI Whisper AI model
+    runWhisperTranscription(channelData, audioContext.sampleRate)
   }
 
       mediaRecorder.start()
@@ -510,7 +558,14 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-1">
-                    <span className="text-[10px] font-semibold text-mute uppercase tracking-wider">Captured Speech Transcript (Editable)</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-semibold text-mute uppercase tracking-wider">Captured Speech Transcript (Editable)</span>
+                      {isTranscribing && (
+                        <span className="text-[10px] font-semibold text-indigo-400 animate-pulse flex items-center gap-1">
+                          🤖 OpenAI Whisper AI Transcribing...
+                        </span>
+                      )}
+                    </div>
                     <input 
                       type="text" 
                       placeholder="Live speech transcript will appear here (or type custom transcript)"
