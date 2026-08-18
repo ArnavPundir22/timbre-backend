@@ -107,17 +107,15 @@ export default function App() {
         try {
           const recognition = new SpeechRecognition()
           recognition.continuous = true
-          recognition.interimResults = false
+          recognition.interimResults = true
           recognition.lang = 'en-US'
 
-          let localTranscript = ''
           recognition.onresult = (event: any) => {
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                localTranscript += event.results[i][0].transcript + ' '
-              }
+            let fullText = ''
+            for (let i = 0; i < event.results.length; ++i) {
+              fullText += event.results[i][0].transcript + ' '
             }
-            setTranscriptText(localTranscript.trim())
+            setTranscriptText(fullText.trim())
           }
 
           recognitionRef.current = recognition
@@ -249,8 +247,8 @@ export default function App() {
     formData.append('transcript', transcriptText || 'No speech detected.')
     
     const summaryText = transcriptText.trim()
-      ? `Voice memo: "${transcriptText.substring(0, 100)}${transcriptText.length > 100 ? '...' : ''}"`
-      : `Voice clip titled "${recordingTitle}" with no speech detected.`
+      ? `Voice memo transcript: "${transcriptText.substring(0, 100)}${transcriptText.length > 100 ? '...' : ''}"`
+      : `Audio clip (${duration.toFixed(1)}s, ${sampleRate}Hz) with WASM DSP effects (Gain: ${gain}x, Normalized: ${shouldNormalize ? 'Yes' : 'No'}, LowPass: ${shouldLowPass ? lowPassCutoff + 'Hz' : 'Off'}).`
     formData.append('summary', summaryText)
 
     try {
@@ -439,6 +437,17 @@ export default function App() {
                     )}
                   </div>
                   
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold text-mute uppercase tracking-wider">Captured Speech Transcript (Editable)</span>
+                    <input 
+                      type="text" 
+                      placeholder="Live speech transcript will appear here (or type custom transcript)"
+                      value={transcriptText}
+                      onChange={(e) => setTranscriptText(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-hairline bg-canvas rounded-lg text-xs text-ink outline-none focus:border-blue-500 transition-all"
+                    />
+                  </div>
+
                   <div className="flex gap-2">
                     <input 
                       type="text" 
