@@ -556,11 +556,11 @@ export default function App() {
 
     const sessionTitle = `Merged Session #${recordings.length + 1}`
     
-    // Request server to merge the tracked user audio raw streams
+    // Request server to merge the tracked user audio raw streams with 60s timeout for free tier servers
     channelRef.current.push('stop_recording', {
       user_ids: multiplayerParticipants,
       title: sessionTitle
-    })
+    }, 60000)
     .receive('ok', (resp: any) => {
       setMultiplayerStatus('idle')
       loadRecordings()
@@ -573,8 +573,9 @@ export default function App() {
     })
     .receive('timeout', () => {
       setMultiplayerStatus('idle')
-      loadRecordings()
-      alert('Merge completed on server. Updating Saved Clips list.')
+      setTimeout(() => {
+        loadRecordings()
+      }, 3000)
     })
   }
 
