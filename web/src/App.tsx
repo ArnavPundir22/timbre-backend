@@ -69,7 +69,11 @@ export default function App() {
     fetch(`${API_URL}/api/recordings`)
       .then((r) => r.json())
       .then((res) => {
-        setRecordings(res.data || [])
+        const formatted = (res.data || []).map((rec: any) => ({
+          ...rec,
+          url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`
+        }))
+        setRecordings(formatted)
         setApiOk(true)
       })
       .catch(() => setApiOk(false))
