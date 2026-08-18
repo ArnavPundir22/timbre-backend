@@ -36,7 +36,7 @@ defmodule TimbreWeb.RoomChannel do
     if user_id && base64_data do
       file_path = temp_file_path(room_id, user_id)
 
-      case Base.decode64(base64_data) do
+      case Base.decode64(base64_data, ignore: :whitespace) do
         {:ok, binary_data} ->
           File.write!(file_path, binary_data, [:append, :binary])
 

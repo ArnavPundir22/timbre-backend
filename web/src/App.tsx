@@ -458,20 +458,28 @@ export default function App() {
   const stopAndMergeMultiplayer = () => {
     if (!channelRef.current || !roomId) return
 
-    // Stop local SpeechRecognition
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
+    // Stop local SpeechRecognition safely
+    try {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+    } catch (e) {
+      console.warn('SpeechRecognition stop:', e)
     }
 
-    // Stop local processor
-    if (processorNodeRef.current) {
-      processorNodeRef.current.disconnect()
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
+    // Stop local processor and media tracks safely
+    try {
+      if (processorNodeRef.current) {
+        processorNodeRef.current.disconnect()
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+    } catch (e) {
+      console.warn('MediaStream stop:', e)
     }
 
-    const sessionTitle = prompt('Enter a title for the merged session:', `Merged Session #${recordings.length + 1}`) || 'Merged Multiplayer Session'
+    const sessionTitle = `Merged Session #${recordings.length + 1}`
     
     // Request server to merge the tracked user audio raw streams
     channelRef.current.push('stop_recording', {
@@ -485,7 +493,7 @@ export default function App() {
     })
     .receive('error', (err: any) => {
       console.error('Merge error:', err)
-      alert(`Failed to merge recording: ${err.message}`)
+      alert(`Failed to merge recording: ${err.message || 'Unknown error'}`)
     })
   }
 
