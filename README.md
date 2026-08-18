@@ -63,7 +63,7 @@ This repository has been updated with a complete implementation of the voice rec
 
 * **What was built**: A collaborative voice recorder where you can record audio locally, apply in-browser DSP audio effects (Gain, Normalize, Low-pass filter) via a Rust WebAssembly module (`timbre_kit`), save/delete files from the backend API, and join multiplayer sessions via a shared link to record and merge multiple microphone streams in real-time.
 * **Architecture & Details**: Complete system documentation has been written to the `/docs` folder. Start here: **[timbre/docs/README.md](docs/README.md)**.
-* **Deployed URL**: Currently configured and verified for **local execution** (API at port `:4010` and Vite dev server at port `:5173`).
+* **Deployed URL**: **[https://web-delta-red-27.vercel.app](https://web-delta-red-27.vercel.app)** (connected to Render API backend at `https://timbre-api-1eny.onrender.com`)
 
 ---
 
