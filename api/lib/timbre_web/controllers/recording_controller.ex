@@ -93,7 +93,15 @@ defmodule TimbreWeb.RecordingController do
   end
 
   defp uploads_dir do
-    dir = Application.app_dir(:timbre, "priv/static/uploads")
+    dir =
+      case System.get_env("DATABASE_PATH") do
+        path when is_binary(path) and path != "" ->
+          Path.join(Path.dirname(path), "uploads")
+
+        _ ->
+          Path.join(System.tmp_dir!(), "uploads")
+      end
+
     File.mkdir_p!(dir)
     dir
   end
