@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
 import init, { rms_level, apply_gain, normalize, low_pass_filter } from 'timbre_kit'
-import { Socket, Channel } from 'phoenix'
 
 interface Recording {
   id: string
@@ -14,7 +13,6 @@ interface Recording {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://timbre-api-1eny.onrender.com'
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://timbre-api-1eny.onrender.com/socket'
 
 export default function App() {
   const [wasmOk, setWasmOk] = useState(false)
@@ -29,7 +27,7 @@ export default function App() {
   const [recordingTitle, setRecordingTitle] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   
-  // DSP parameters
+  // WASM DSP parameters
   const [gain, setGain] = useState<number>(1.0)
   const [shouldNormalize, setShouldNormalize] = useState<boolean>(false)
   const [shouldLowPass, setShouldLowPass] = useState<boolean>(false)
@@ -38,33 +36,21 @@ export default function App() {
   // List of saved recordings
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [transcriptText, setTranscriptText] = useState('')
-  const recognitionRef = useRef<any>(null)
-
-  // Multiplayer room state
-  const [roomId, setRoomId] = useState<string>('')
-  const [userId, setUserId] = useState<string>('')
-  const [inRoom, setInRoom] = useState(false)
-  const [multiplayerParticipants, setMultiplayerParticipants] = useState<string[]>([])
-  const [multiplayerStatus, setMultiplayerStatus] = useState<string>('idle')
-  const socketErrorShown = useRef(false)
-
+  
   // Refs for audio processing
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const processorNodeRef = useRef<ScriptProcessorNode | AudioWorkletNode | any | null>(null)
-  const socketRef = useRef<Socket | null>(null)
-  const channelRef = useRef<Channel | null>(null)
-  const userIdRef = useRef<string>('')
+  const recognitionRef = useRef<any>(null)
 
-  // Initialize WASM
+  // Initialize WASM Module
   useEffect(() => {
     init()
       .then(() => setWasmOk(rms_level(new Float32Array([1, -1, 1, -1])) > 0.99))
       .catch(() => setWasmOk(false))
   }, [])
 
-  // Check API & load recordings
+  // Check API & load recordings from Phoenix Backend
   const loadRecordings = () => {
     fetch(`${API_URL}/api/recordings`)
       .then((r) => r.json())
@@ -81,16 +67,6 @@ export default function App() {
 
   useEffect(() => {
     loadRecordings()
-  }, [])
-
-  // Check URL parameters for multiplayer room join
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const room = params.get('room')
-    if (room) {
-      setRoomId(room)
-      joinMultiplayerRoom(room)
-    }
   }, [])
 
   // Start single player recording
@@ -125,40 +101,46 @@ export default function App() {
         setRecordingTitle(`Recording #${recordings.length + 1}`)
       }
 
-      // Speech Recognition
+      // Speech Recognition for live transcripts
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (SpeechRecognition) {
-        const recognition = new SpeechRecognition()
-        recognition.continuous = true
-        recognition.interimResults = false
-        recognition.lang = 'en-US'
+        try {
+          const recognition = new SpeechRecognition()
+          recognition.continuous = true
+          recognition.interimResults = false
+          recognition.lang = 'en-US'
 
-        let localTranscript = ''
-        recognition.onresult = (event: any) => {
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              localTranscript += event.results[i][0].transcript + ' '
+          let localTranscript = ''
+          recognition.onresult = (event: any) => {
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                localTranscript += event.results[i][0].transcript + ' '
+              }
             }
+            setTranscriptText(localTranscript.trim())
           }
-          setTranscriptText(localTranscript.trim())
-        }
 
-        recognitionRef.current = recognition
-        recognition.start()
+          recognitionRef.current = recognition
+          recognition.start()
+        } catch (e) {
+          console.warn('SpeechRecognition not available:', e)
+        }
       }
 
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
       console.error('Failed to start recording:', err)
-      alert('Could not access microphone.')
+      alert('Could not access microphone. Please allow microphone permissions.')
     }
   }
 
   // Stop recording
   const stopRecording = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop()
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {}
     }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
@@ -182,17 +164,17 @@ export default function App() {
     // Copy original pcm to avoid mutating the source array
     const processed = new Float32Array(rawPCM)
     
-    // Apply gain
+    // Apply gain via Rust WASM
     if (gain !== 1.0) {
       apply_gain(processed, gain)
     }
 
-    // Apply normalization
+    // Apply normalization via Rust WASM
     if (shouldNormalize) {
       normalize(processed)
     }
 
-    // Apply lowpass filter
+    // Apply lowpass filter via Rust WASM
     if (shouldLowPass) {
       low_pass_filter(processed, sampleRate, lowPassCutoff)
     }
@@ -249,7 +231,7 @@ export default function App() {
 
     setIsUploading(true)
 
-    // Run same DSP transformations
+    // Run same WASM DSP transformations
     const processed = new Float32Array(rawPCM)
     if (gain !== 1.0) apply_gain(processed, gain)
     if (shouldNormalize) normalize(processed)
@@ -282,7 +264,7 @@ export default function App() {
         setRecordingTitle('')
         loadRecordings()
       } else {
-        alert('Failed to upload recording.')
+        alert('Failed to upload recording to server.')
       }
     } catch (err) {
       console.error('Upload failed:', err)
@@ -312,273 +294,6 @@ export default function App() {
     }
   }
 
-  // Multiplayer: Create and join a room
-  const createRoom = () => {
-    const randomRoomId = Math.random().toString(36).substring(2, 9)
-    window.history.pushState({}, '', `?room=${randomRoomId}`)
-    setRoomId(randomRoomId)
-    joinMultiplayerRoom(randomRoomId)
-  }
-
-  const joinMultiplayerRoom = (targetRoomId: string) => {
-    const randomUserId = `User_${Math.random().toString(36).substring(2, 6)}`
-    userIdRef.current = randomUserId
-    setUserId(randomUserId)
-
-    // Connect to Phoenix Socket with reconnect strategy
-    const socket = new Socket(WS_URL, {
-      reconnectAfterMs: (tries: number) => [1000, 2000, 5000, 10000][tries - 1] || 10000,
-    })
-    socketRef.current = socket
-
-    socket.onError(() => {
-      console.error('WebSocket connection error - backend may be waking up')
-      if (!socketErrorShown.current) {
-        socketErrorShown.current = true
-        setMultiplayerStatus('waking')
-      }
-    })
-
-    socket.onOpen(() => {
-      socketErrorShown.current = false
-      setMultiplayerStatus('idle')
-    })
-
-    socket.connect()
-
-    // Join room channel
-    const channel = socket.channel(`room:${targetRoomId}`, {})
-    channelRef.current = channel
-
-    channel.join()
-      .receive('ok', () => {
-        setInRoom(true)
-        setMultiplayerParticipants([randomUserId])
-        channel.push('user_joined', { user_id: randomUserId })
-      })
-      .receive('error', (resp: any) => {
-        console.error('Failed to join channel:', resp)
-        alert('Could not join multiplayer room. Backend may be starting up — try again in 20 seconds.')
-      })
-
-    // Listen for room updates
-    channel.on('user_joined', (msg: any) => {
-      setMultiplayerParticipants((prev) => Array.from(new Set([...prev, msg.user_id])))
-      if (msg.user_id !== userIdRef.current && userIdRef.current) {
-        channel.push('user_joined', { user_id: userIdRef.current })
-      }
-    })
-
-    channel.on('recording_started', (msg: any) => {
-      setMultiplayerParticipants((prev) => Array.from(new Set([...prev, msg.user_id])))
-      setMultiplayerStatus('recording')
-    })
-
-    channel.on('recording_merged', (msg: any) => {
-      setMultiplayerStatus('idle')
-      loadRecordings()
-      alert(`New merged recording "${msg.recording.title}" is ready!`)
-    })
-  }
-
-  // Start multiplayer streaming recording
-  const startMultiplayerRecording = async () => {
-    if (!channelRef.current) return
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume()
-      }
-      audioContextRef.current = audioContext
-
-      const source = audioContext.createMediaStreamSource(stream)
-      const activeUserId = userIdRef.current || userId
-
-      // Tell backend we are starting
-      channelRef.current.push('start_recording', { user_id: activeUserId })
-
-      let workletLoaded = false
-      if (audioContext.audioWorklet) {
-        try {
-          const workletCode = `
-            class PcmProcessor extends AudioWorkletProcessor {
-              process(inputs) {
-                const input = inputs[0];
-                if (input && input[0] && input[0].length > 0) {
-                  this.port.postMessage(new Float32Array(input[0]));
-                }
-                return true;
-              }
-            }
-            registerProcessor('pcm-processor', PcmProcessor);
-          `
-          const blob = new Blob([workletCode], { type: 'application/javascript' })
-          const workletUrl = URL.createObjectURL(blob)
-          await audioContext.audioWorklet.addModule(workletUrl)
-          URL.revokeObjectURL(workletUrl)
-
-          const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor')
-          processorNodeRef.current = workletNode
-
-          workletNode.port.onmessage = (e) => {
-            const input = e.data as Float32Array
-            const buffer = new ArrayBuffer(input.length * 2)
-            const view = new DataView(buffer)
-            for (let i = 0; i < input.length; i++) {
-              const s = Math.max(-1, Math.min(1, input[i]))
-              view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
-            }
-
-            const bytes = new Uint8Array(buffer)
-            let binary = ''
-            const chunkSize = 0x8000
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-              binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
-            }
-            const base64 = btoa(binary)
-            channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
-          }
-
-          const gainNode = audioContext.createGain()
-          gainNode.gain.value = 0
-          source.connect(workletNode)
-          workletNode.connect(gainNode)
-          gainNode.connect(audioContext.destination)
-          workletLoaded = true
-        } catch (workletErr) {
-          console.warn('AudioWorklet fallback to ScriptProcessor:', workletErr)
-        }
-      }
-
-      if (!workletLoaded) {
-        // Safe robust ScriptProcessorNode fallback
-        const processor = audioContext.createScriptProcessor(4096, 1, 1)
-        processorNodeRef.current = processor
-
-        processor.onaudioprocess = (e) => {
-          const input = e.inputBuffer.getChannelData(0)
-          const buffer = new ArrayBuffer(input.length * 2)
-          const view = new DataView(buffer)
-          for (let i = 0; i < input.length; i++) {
-            const s = Math.max(-1, Math.min(1, input[i]))
-            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
-          }
-
-          const bytes = new Uint8Array(buffer)
-          let binary = ''
-          const chunkSize = 0x8000
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
-          }
-          const base64 = btoa(binary)
-          channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
-        }
-
-        const gainNode = audioContext.createGain()
-        gainNode.gain.value = 0
-        source.connect(processor)
-        processor.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-      }
-
-      // Speech Recognition for real-time multiplayer transcripts
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition()
-          recognition.continuous = true
-          recognition.interimResults = false
-          recognition.lang = 'en-US'
-
-          let localTranscript = ''
-          recognition.onresult = (event: any) => {
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                localTranscript += event.results[i][0].transcript + ' '
-              }
-            }
-            const text = localTranscript.trim()
-            setTranscriptText(text)
-            // Stream transcript to server in real-time with user_id
-            channelRef.current?.push('submit_transcript', { transcript: text, user_id: activeUserId })
-          }
-
-          recognitionRef.current = recognition
-          recognition.start()
-        } catch (recErr) {
-          console.warn('SpeechRecognition warning:', recErr)
-        }
-      }
-
-      setMultiplayerStatus('recording')
-    } catch (err) {
-      console.error('Multiplayer recording failed:', err)
-      alert('Could not start multiplayer recording.')
-    }
-  }
-
-  // Stop multiplayer session and merge audio files
-  const stopAndMergeMultiplayer = () => {
-    if (!channelRef.current || !roomId) return
-
-    setMultiplayerStatus('merging')
-
-    // Stop local SpeechRecognition safely
-    try {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-      }
-    } catch (e) {
-      console.warn('SpeechRecognition stop:', e)
-    }
-
-    // Stop local processor and media tracks safely
-    try {
-      if (processorNodeRef.current) {
-        if (processorNodeRef.current.port) {
-          processorNodeRef.current.port.onmessage = null
-        }
-        processorNodeRef.current.disconnect()
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop())
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close()
-      }
-    } catch (e) {
-      console.warn('MediaStream stop:', e)
-    }
-
-    const sessionTitle = `Merged Session #${recordings.length + 1}`
-    
-    // Request server to merge the tracked user audio raw streams with 60s timeout for free tier servers
-    channelRef.current.push('stop_recording', {
-      user_ids: multiplayerParticipants,
-      title: sessionTitle
-    }, 60000)
-    .receive('ok', (resp: any) => {
-      setMultiplayerStatus('idle')
-      loadRecordings()
-      alert(`🎉 Session merged successfully: "${resp.recording.title}"`)
-    })
-    .receive('error', (err: any) => {
-      setMultiplayerStatus('idle')
-      console.error('Merge error:', err)
-      alert(`Failed to merge recording: ${err.message || 'Unknown error'}`)
-    })
-    .receive('timeout', () => {
-      setMultiplayerStatus('idle')
-      setTimeout(() => {
-        loadRecordings()
-      }, 3000)
-    })
-  }
-
   const Dot = ({ ok, label }: { ok: boolean; label: string }) => (
     <span className="inline-flex items-center gap-1.5 text-xs text-mute">
       <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-link' : 'bg-hairline-strong'}`} />
@@ -587,12 +302,12 @@ export default function App() {
   )
 
   return (
-    <div className="min-h-screen bg-canvas text-body">
-      <header className="sticky top-0 z-10 border-b border-hairline bg-canvas/80 backdrop-blur">
+    <div className="min-h-screen bg-canvas text-ink font-sans">
+      <header className="border-b border-hairline bg-canvas-soft">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-          <span className="text-xl font-bold tracking-tight text-ink flex items-center gap-2">
-            🎙️ timbre
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold tracking-tight">🎙️ timbre</span>
+          </div>
           <div className="flex items-center gap-4">
             <Dot ok={wasmOk} label="WASM DSP" />
             <Dot ok={apiOk} label="API Connection" />
@@ -602,7 +317,7 @@ export default function App() {
 
       <main className="mx-auto max-w-4xl px-6 py-8 grid grid-cols-1 md:grid-cols-3 gap-8">
         
-        {/* Left Side: Recording and Voice Processing */}
+        {/* Left Side: Live Recording & WASM DSP Voice Processing */}
         <div className="md:col-span-2 space-y-6">
           
           {/* Main Voice Recorder card */}
@@ -625,7 +340,7 @@ export default function App() {
                       ■
                     </button>
                   </div>
-                  <span className="text-sm font-medium text-red-500 animate-pulse">Recording audio...</span>
+                  <span className="text-sm font-medium text-red-500 animate-pulse">Recording audio... Click stop when done</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center space-y-4">
@@ -635,16 +350,16 @@ export default function App() {
                   >
                     🎤
                   </button>
-                  <span className="text-sm text-mute">Click to start recording</span>
+                  <span className="text-sm text-mute">Click microphone to start recording</span>
                 </div>
               )}
             </div>
 
-            {/* DSP Controls */}
+            {/* WASM DSP Controls */}
             {rawPCM && (
               <div className="space-y-6 border-t border-hairline pt-6">
                 <h3 className="font-semibold text-ink flex items-center gap-2">
-                  ⚡ WASM DSP Effects (In-Browser)
+                  ⚡ WASM Voice Processing (Rust/WASM)
                 </h3>
                 
                 {/* Volume / Gain Slider */}
@@ -718,7 +433,7 @@ export default function App() {
                     )}
                     {audioUrl && (
                       <div className="space-y-1">
-                        <span className="text-[10px] font-semibold text-mute uppercase tracking-wider">Processed (After)</span>
+                        <span className="text-[10px] font-semibold text-mute uppercase tracking-wider">Processed (After WASM)</span>
                         <audio src={audioUrl} controls className="w-full h-8" />
                       </div>
                     )}
@@ -744,101 +459,6 @@ export default function App() {
               </div>
             )}
           </div>
-
-          {/* Multiplayer Panel */}
-          <div className="border border-hairline bg-canvas-soft rounded-2xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-ink mb-4 flex items-center gap-2">
-              👥 Multiplayer Studio
-            </h2>
-
-            {!inRoom ? (
-              <div className="space-y-4">
-                <p className="text-sm text-mute">Join a multiplayer session to record audio collaboratively with peers and mix your streams into one file.</p>
-                {multiplayerStatus === 'waking' && (
-                  <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs text-yellow-400 animate-pulse">
-                    ⏳ Backend is waking up on Render free tier… this takes 15–30 seconds. Will connect automatically.
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={createRoom}
-                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md"
-                  >
-                    Create New Session
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-3 bg-canvas border border-hairline rounded-lg space-y-2">
-                  <span className="text-xs font-semibold text-ink uppercase tracking-wider">Share Link</span>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={window.location.href}
-                      className="flex-1 bg-canvas-soft border border-hairline px-3 py-1.5 rounded text-xs text-mute outline-none"
-                    />
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(window.location.href)
-                        alert('Copied room link!')
-                      }}
-                      className="px-3 bg-hairline hover:bg-hairline-strong text-ink rounded text-xs font-medium transition-all"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-ink uppercase tracking-wider">Participants ({multiplayerParticipants.length})</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {multiplayerParticipants.map((uid) => (
-                      <span key={uid} className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs rounded-full font-medium">
-                        👤 {uid} {uid === userId ? '(You)' : ''}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 border-t border-hairline pt-4">
-                  {multiplayerStatus === 'recording' ? (
-                    <button 
-                      onClick={stopAndMergeMultiplayer}
-                      className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                      Stop & Merge Session
-                    </button>
-                  ) : multiplayerStatus === 'merging' ? (
-                    <button 
-                      disabled
-                      className="flex-1 py-2 bg-indigo-600/60 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2 cursor-wait"
-                    >
-                      <span className="animate-spin">⏳</span> Merging Audio Streams...
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={startMultiplayerRecording}
-                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2"
-                    >
-                      🎙️ Record Multi-Stream
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => {
-                      window.history.pushState({}, '', window.location.pathname)
-                      window.location.reload()
-                    }}
-                    className="px-4 py-2 border border-hairline text-ink rounded-lg text-sm font-medium hover:bg-hairline transition-all"
-                  >
-                    Leave
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Right Side: Recordings Archive */}
@@ -852,11 +472,11 @@ export default function App() {
               <div className="flex-1 flex flex-col items-center justify-center py-20 text-center">
                 <span className="text-4xl mb-2">📁</span>
                 <span className="text-sm font-medium text-ink">No recordings found</span>
-                <span className="text-xs text-mute mt-1">Upload a recording to get started.</span>
+                <span className="text-xs text-mute mt-1">Record audio and click Save Recording to get started.</span>
               </div>
             ) : (
-              <div className="space-y-4 divide-y divide-hairline overflow-y-auto max-h-[500px] pr-1">
-                 {recordings.map((recording) => (
+              <div className="space-y-4 divide-y divide-hairline overflow-y-auto max-h-[550px] pr-1">
+                {recordings.map((recording) => (
                   <div key={recording.id} className="pt-4 first:pt-0 space-y-2">
                     <div className="flex justify-between items-start">
                       <div>
@@ -901,7 +521,7 @@ export default function App() {
 
       <footer className="border-t border-hairline mt-12 bg-canvas-soft">
         <div className="mx-auto max-w-4xl px-6 py-8 text-center text-xs text-mute">
-          Timbre Full-Stack Voice Recorder — Phoenix + React + Rust WASM
+          Timbre Full-Stack Voice Recorder — Phoenix API + React Web + Rust WASM
         </div>
       </footer>
     </div>
