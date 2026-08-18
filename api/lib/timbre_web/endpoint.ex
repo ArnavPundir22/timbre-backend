@@ -16,7 +16,7 @@ defmodule TimbreWeb.Endpoint do
   #   longpoll: [connect_info: [session: @session_options]]
 
   socket "/socket", TimbreWeb.UserSocket,
-    websocket: true,
+    websocket: [check_origin: false],
     longpoll: false
 
   plug CORSPlug
