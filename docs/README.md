@@ -10,10 +10,9 @@ This document serves as the entry point and index for the production-grade docum
 
 To understand the system in detail, navigate through the following sub-pages:
 
-* **[Frontend Architecture (React 19)](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/frontend.md)**: Details the Web Audio API media pipeline, chunk processing, and TypeScript WAV encoding.
+* **[Frontend Architecture (React 19)](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/frontend.md)**: Details the Web Audio API media pipeline, WASM state management, and in-browser OpenAI Whisper AI speech transcription (`@xenova/transformers`).
 * **[Rust WASM DSP Crate (`timbre_kit`)](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/wasm_dsp.md)**: Explains the math and implementation behind the Rust-based Gain, Normalize, and Low-pass filter algorithms.
-* **[Backend Architecture & Database (Phoenix API)](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/backend.md)**: Explains the Ecto SQLite persistence layer and media upload/download controllers.
-* **[Multiplayer Channels & Mixing Engine](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/multiplayer.md)**: Explains the real-time WebSocket protocol for streaming audio chunks and the server-side summing and clamping algorithm.
+* **[Backend Architecture & Database (Phoenix API)](file:///home/dell/iv-fullstack-eng-assignment-ArnavPundir22-main/docs/backend.md)**: Explains the Ecto SQLite persistence layer, database models, and media controllers.
 
 ---
 

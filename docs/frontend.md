@@ -53,9 +53,16 @@ To convert floating-point samples (between `-1.0` and `1.0`) to 16-bit signed in
 
 ---
 
-## 👥 4. Real-Time Multiplayer Capture
+## 🤖 4. In-Browser OpenAI Whisper AI Speech Transcription
 
-During a multiplayer session, the app uses a `ScriptProcessorNode` to capture mic audio chunk-by-chunk in real-time.
-* A buffer size of `4096` samples is used.
-* Every time the microphone fills the buffer, the `onaudioprocess` handler is called.
-* The Float32 samples are converted to 16-bit PCM (little-endian), encoded to **Base64**, and pushed to the Phoenix WebSocket Channel under the `"audio_chunk"` event.
+Speech-to-text transcription uses the **OpenAI Whisper AI model (`@xenova/transformers`)** executing 100% locally in the browser via WebAssembly:
+
+```
+[Captured Mic PCM] ──> [Resample to 16kHz] ──> [Whisper-Tiny.en Neural Model] ──> [Word-for-Word Text]
+```
+
+### Key Technical Architecture:
+* **Zero Server Overhead**: The `Xenova/whisper-tiny.en` automatic speech recognition model runs client-side in WebAssembly/WebGL.
+* **Exact Word-for-Word Audio Transcripts**: Operates directly on the resampled 16,000 Hz Float32Array PCM audio buffer.
+* **Phrase Deduplication**: Employs a regex deduplication filter (`\b(\w+(?:\s+\w+){0,3})\s+\1\b`) to ensure clean speech formatting.
+* **Editable UI Input**: Renders an interactive transcript input box allowing users to view and edit recognized text before persisting to the SQLite database.
