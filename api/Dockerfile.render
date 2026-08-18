@@ -19,9 +19,9 @@ RUN apt-get update -y && apt-get install -y libsqlite3-0 openssl curl && apt-get
 WORKDIR /app
 COPY --from=elixir-builder /app/api/_build/prod/rel/timbre ./
 ENV PORT=10000
-ENV DATABASE_PATH="/data/timbre.db"
+ENV DATABASE_PATH="/tmp/timbre.db"
 ENV MIX_ENV="prod"
 ENV PHX_SERVER="true"
-RUN mkdir -p /data
+RUN mkdir -p /tmp/timbre_uploads
 EXPOSE 10000
 CMD ["sh", "-c", "/app/bin/timbre eval 'Timbre.Release.migrate' && /app/bin/timbre start"]
