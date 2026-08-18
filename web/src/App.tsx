@@ -390,6 +390,9 @@ export default function App() {
       streamRef.current = stream
 
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
       audioContextRef.current = audioContext
 
       const source = audioContext.createMediaStreamSource(stream)
@@ -449,8 +452,12 @@ export default function App() {
         recognition.start()
       }
 
+      const gainNode = audioContext.createGain()
+      gainNode.gain.value = 0
+
       source.connect(processor)
-      processor.connect(audioContext.destination)
+      processor.connect(gainNode)
+      gainNode.connect(audioContext.destination)
       setMultiplayerStatus('recording')
     } catch (err) {
       console.error('Multiplayer recording failed:', err)
