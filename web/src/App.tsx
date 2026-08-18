@@ -401,54 +401,61 @@ export default function App() {
       // Tell backend we are starting
       channelRef.current.push('start_recording', { user_id: activeUserId })
 
+      let workletLoaded = false
       if (audioContext.audioWorklet) {
-        // Modern non-deprecated AudioWorkletNode
-        const workletCode = `
-          class PcmProcessor extends AudioWorkletProcessor {
-            process(inputs) {
-              const input = inputs[0];
-              if (input && input[0] && input[0].length > 0) {
-                this.port.postMessage(new Float32Array(input[0]));
+        try {
+          const workletCode = `
+            class PcmProcessor extends AudioWorkletProcessor {
+              process(inputs) {
+                const input = inputs[0];
+                if (input && input[0] && input[0].length > 0) {
+                  this.port.postMessage(new Float32Array(input[0]));
+                }
+                return true;
               }
-              return true;
             }
-          }
-          registerProcessor('pcm-processor', PcmProcessor);
-        `
-        const blob = new Blob([workletCode], { type: 'application/javascript' })
-        const workletUrl = URL.createObjectURL(blob)
-        await audioContext.audioWorklet.addModule(workletUrl)
-        URL.revokeObjectURL(workletUrl)
+            registerProcessor('pcm-processor', PcmProcessor);
+          `
+          const blob = new Blob([workletCode], { type: 'application/javascript' })
+          const workletUrl = URL.createObjectURL(blob)
+          await audioContext.audioWorklet.addModule(workletUrl)
+          URL.revokeObjectURL(workletUrl)
 
-        const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor')
-        processorNodeRef.current = workletNode
+          const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor')
+          processorNodeRef.current = workletNode
 
-        workletNode.port.onmessage = (e) => {
-          const input = e.data as Float32Array
-          const buffer = new ArrayBuffer(input.length * 2)
-          const view = new DataView(buffer)
-          for (let i = 0; i < input.length; i++) {
-            const s = Math.max(-1, Math.min(1, input[i]))
-            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+          workletNode.port.onmessage = (e) => {
+            const input = e.data as Float32Array
+            const buffer = new ArrayBuffer(input.length * 2)
+            const view = new DataView(buffer)
+            for (let i = 0; i < input.length; i++) {
+              const s = Math.max(-1, Math.min(1, input[i]))
+              view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+            }
+
+            const bytes = new Uint8Array(buffer)
+            let binary = ''
+            const chunkSize = 0x8000
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
+            }
+            const base64 = btoa(binary)
+            channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
           }
 
-          const bytes = new Uint8Array(buffer)
-          let binary = ''
-          const chunkSize = 0x8000
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any)
-          }
-          const base64 = btoa(binary)
-          channelRef.current?.push('audio_chunk', { user_id: activeUserId, data: base64 })
+          const gainNode = audioContext.createGain()
+          gainNode.gain.value = 0
+          source.connect(workletNode)
+          workletNode.connect(gainNode)
+          gainNode.connect(audioContext.destination)
+          workletLoaded = true
+        } catch (workletErr) {
+          console.warn('AudioWorklet fallback to ScriptProcessor:', workletErr)
         }
+      }
 
-        const gainNode = audioContext.createGain()
-        gainNode.gain.value = 0
-        source.connect(workletNode)
-        workletNode.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-      } else {
-        // Legacy ScriptProcessorNode fallback
+      if (!workletLoaded) {
+        // Safe robust ScriptProcessorNode fallback
         const processor = audioContext.createScriptProcessor(4096, 1, 1)
         processorNodeRef.current = processor
 
