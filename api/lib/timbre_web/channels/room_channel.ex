@@ -1,10 +1,8 @@
 defmodule TimbreWeb.RoomChannel do
   use TimbreWeb, :channel
 
-  @uploads_dir Path.expand("priv/static/uploads", File.cwd!())
-
   def join("room:" <> room_id, _payload, socket) do
-    File.mkdir_p!(@uploads_dir)
+    uploads_dir()
     {:ok, assign(socket, :room_id, room_id)}
   end
 
@@ -30,11 +28,12 @@ defmodule TimbreWeb.RoomChannel do
   end
 
   # Stream audio chunks: client sends raw PCM bytes in base64 format
-  def handle_in("audio_chunk", %{"data" => base64_data}, socket) do
+  def handle_in("audio_chunk", payload, socket) do
     room_id = socket.assigns.room_id
-    user_id = socket.assigns.user_id
+    user_id = payload["user_id"] || socket.assigns[:user_id]
+    base64_data = payload["data"]
 
-    if user_id do
+    if user_id && base64_data do
       file_path = temp_file_path(room_id, user_id)
 
       case Base.decode64(base64_data) do
@@ -52,6 +51,7 @@ defmodule TimbreWeb.RoomChannel do
   # When recording stops, host sends "stop_recording" with list of user_ids in the session
   def handle_in("stop_recording", %{"user_ids" => user_ids, "title" => title}, socket) do
     room_id = socket.assigns.room_id
+    dir = uploads_dir()
 
     # Find all temp files for this room session
     file_paths = Enum.map(user_ids, fn uid -> temp_file_path(room_id, uid) end)
@@ -59,7 +59,7 @@ defmodule TimbreWeb.RoomChannel do
 
     if existing_paths != [] do
       unique_filename = "merged_#{room_id}_#{System.system_time(:millisecond)}.wav"
-      output_wav_path = Path.join(@uploads_dir, unique_filename)
+      output_wav_path = Path.join(dir, unique_filename)
 
       # Mix PCM files
       mix_pcm_files(existing_paths, output_wav_path)
@@ -78,7 +78,7 @@ defmodule TimbreWeb.RoomChannel do
       # Read transcripts from temporary text files submitted by participants
       transcripts =
         Enum.map(user_ids, fn uid ->
-          txt_path = Path.join(@uploads_dir, "temp_#{room_id}_#{uid}.txt")
+          txt_path = Path.join(dir, "temp_#{room_id}_#{uid}.txt")
 
           if File.exists?(txt_path) do
             content = File.read!(txt_path)
@@ -132,7 +132,7 @@ defmodule TimbreWeb.RoomChannel do
     user_id = socket.assigns.user_id
 
     if user_id && String.trim(transcript) != "" do
-      file_path = Path.join(@uploads_dir, "temp_#{room_id}_#{user_id}.txt")
+      file_path = Path.join(uploads_dir(), "temp_#{room_id}_#{user_id}.txt")
       File.write!(file_path, String.trim(transcript))
     end
 
@@ -140,7 +140,13 @@ defmodule TimbreWeb.RoomChannel do
   end
 
   defp temp_file_path(room_id, user_id) do
-    Path.join(@uploads_dir, "temp_#{room_id}_#{user_id}.raw")
+    Path.join(uploads_dir(), "temp_#{room_id}_#{user_id}.raw")
+  end
+
+  defp uploads_dir do
+    dir = Application.app_dir(:timbre, "priv/static/uploads")
+    File.mkdir_p!(dir)
+    dir
   end
 
   defp mix_pcm_files(file_paths, output_wav_path, sample_rate \\ 44100) do

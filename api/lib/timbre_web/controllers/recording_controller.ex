@@ -1,8 +1,6 @@
 defmodule TimbreWeb.RecordingController do
   use TimbreWeb, :controller
 
-  @uploads_dir Path.expand("priv/static/uploads", File.cwd!())
-
   def index(conn, _params) do
     recordings = Timbre.list_recordings()
     render(conn, :index, recordings: recordings)
@@ -14,12 +12,12 @@ defmodule TimbreWeb.RecordingController do
           params
       ) do
     # Ensure uploads directory exists
-    File.mkdir_p!(@uploads_dir)
+    dir = uploads_dir()
 
     # Generate unique filename
     ext = Path.extname(original_filename) || ".wav"
     unique_filename = "#{System.system_time(:millisecond)}_#{:rand.uniform(1000)}#{ext}"
-    dest_path = Path.join(@uploads_dir, unique_filename)
+    dest_path = Path.join(dir, unique_filename)
 
     # Copy file from temp location
     File.cp!(temp_path, dest_path)
@@ -67,7 +65,7 @@ defmodule TimbreWeb.RecordingController do
 
   def show(conn, %{"id" => id}) do
     recording = Timbre.get_recording!(id)
-    file_path = Path.join(@uploads_dir, recording.filename)
+    file_path = Path.join(uploads_dir(), recording.filename)
 
     if File.exists?(file_path) do
       conn
@@ -83,7 +81,7 @@ defmodule TimbreWeb.RecordingController do
 
   def delete(conn, %{"id" => id}) do
     recording = Timbre.get_recording!(id)
-    file_path = Path.join(@uploads_dir, recording.filename)
+    file_path = Path.join(uploads_dir(), recording.filename)
 
     if File.exists?(file_path) do
       File.rm!(file_path)
@@ -92,5 +90,11 @@ defmodule TimbreWeb.RecordingController do
     {:ok, _recording} = Timbre.delete_recording(recording)
 
     send_resp(conn, 204, "")
+  end
+
+  defp uploads_dir do
+    dir = Application.app_dir(:timbre, "priv/static/uploads")
+    File.mkdir_p!(dir)
+    dir
   end
 end
