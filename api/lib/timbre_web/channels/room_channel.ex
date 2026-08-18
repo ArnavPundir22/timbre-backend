@@ -145,15 +145,7 @@ defmodule TimbreWeb.RoomChannel do
   end
 
   defp uploads_dir do
-    dir =
-      case System.get_env("DATABASE_PATH") do
-        path when is_binary(path) and path != "" ->
-          Path.join(Path.dirname(path), "uploads")
-
-        _ ->
-          Path.join(System.tmp_dir!(), "uploads")
-      end
-
+    dir = Path.join(System.tmp_dir!(), "timbre_uploads")
     File.mkdir_p!(dir)
     dir
   end
