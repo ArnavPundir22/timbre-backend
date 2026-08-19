@@ -445,6 +445,8 @@ export default function App() {
     setParticipants([])
   }
 
+  const multiplayerChunksRef = useRef<Float32Array[]>([])
+
   // Start Multiplayer Real-Time Audio Chunk Streaming
   const startMultiplayerRecording = async () => {
     if (!channelRef.current) return
@@ -464,8 +466,12 @@ export default function App() {
           console.log('Multiplayer session started on channel')
         })
 
+      multiplayerChunksRef.current = []
+
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0)
+        multiplayerChunksRef.current.push(new Float32Array(inputData))
+
         // Convert Float32Array to Int16 PCM array buffer
         const pcm16 = new Int16Array(inputData.length)
         for (let i = 0; i < inputData.length; i++) {
@@ -509,10 +515,71 @@ export default function App() {
 
     setIsUploading(true)
 
+    const saveLocalMultiplayerFallback = async () => {
+      try {
+        const chunks = multiplayerChunksRef.current
+        let totalLength = 0
+        chunks.forEach((c) => (totalLength += c.length))
+
+        if (totalLength > 0) {
+          const mergedPCM = new Float32Array(totalLength)
+          let offset = 0
+          chunks.forEach((c) => {
+            mergedPCM.set(c, offset)
+            offset += c.length
+          })
+
+          const duration = mergedPCM.length / sampleRate
+          const wavBlob = bufferToWav(mergedPCM, sampleRate)
+          const file = new File([wavBlob], `multiplayer_${Date.now()}.wav`, { type: 'audio/wav' })
+
+          const formData = new FormData()
+          formData.append('title', `Multiplayer Session (${participants.length || 1} speakers)`)
+          formData.append('duration_seconds', duration.toString())
+          formData.append('audio', file)
+
+          const transcript = analyzeSpeechFromPCM(mergedPCM, sampleRate)
+          formData.append('transcript', transcript)
+          formData.append(
+            'summary',
+            `Multiplayer session recording merged (${duration.toFixed(1)}s duration, ${participants.length || 1} speakers).`
+          )
+
+          const res = await fetch(`${API_URL}/api/recordings`, {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            if (data && data.data) {
+              const rec = data.data
+              const formatted = {
+                ...rec,
+                url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
+              }
+              saveToLocalStorage(formatted)
+              setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed local multiplayer fallback:', err)
+      } finally {
+        multiplayerChunksRef.current = []
+        setIsMultiplayerRecording(false)
+        setIsUploading(false)
+        loadRecordings()
+      }
+    }
+
     if (channelRef.current) {
+      let channelResponded = false
+
       channelRef.current
         .push('stop_recording', { title: `Multiplayer Session (${participants.length || 1} speakers)` })
         .receive('ok', (res: any) => {
+          channelResponded = true
           console.log('Recording merged successfully via WebSockets:', res)
           if (res && res.recording) {
             const rec = res.recording
@@ -523,26 +590,28 @@ export default function App() {
             saveToLocalStorage(formatted)
             setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
           }
-          loadRecordings()
+          multiplayerChunksRef.current = []
           setIsMultiplayerRecording(false)
           setIsUploading(false)
+          loadRecordings()
         })
         .receive('error', (err: any) => {
-          console.warn('Channel merge error:', err)
-          setIsMultiplayerRecording(false)
-          setIsUploading(false)
-          loadRecordings()
+          console.warn('Channel merge error, creating local fallback:', err)
+          if (!channelResponded) saveLocalMultiplayerFallback()
         })
         .receive('timeout', () => {
-          console.warn('Channel merge timeout, refreshing list...')
-          setIsMultiplayerRecording(false)
-          setIsUploading(false)
-          loadRecordings()
+          console.warn('Channel merge timeout, creating local fallback...')
+          if (!channelResponded) saveLocalMultiplayerFallback()
         })
+
+      setTimeout(() => {
+        if (!channelResponded) {
+          console.warn('WebSocket channel response delayed, triggering fallback save...')
+          saveLocalMultiplayerFallback()
+        }
+      }, 2500)
     } else {
-      setIsMultiplayerRecording(false)
-      setIsUploading(false)
-      loadRecordings()
+      saveLocalMultiplayerFallback()
     }
   }
 
