@@ -1147,28 +1147,41 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-4 divide-y divide-hairline overflow-y-auto max-h-[550px] pr-1">
-                {recordings.map((recording) => (
-                  <div key={recording.id} className="pt-4 first:pt-0 space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-sm font-semibold text-ink line-clamp-1">{recording.title}</h3>
-                        <span className="text-xs text-mute">
-                          Duration: {recording.duration_seconds ? `${recording.duration_seconds.toFixed(1)}s` : 'Unknown'}
-                        </span>
+                {recordings.map((recording) => {
+                  const isMerged =
+                    recording.title.toLowerCase().includes('merged') ||
+                    recording.title.toLowerCase().includes('multiplayer') ||
+                    recording.title.toLowerCase().includes('multi-user') ||
+                    recording.summary?.toLowerCase().includes('merged')
+
+                  return (
+                    <div key={recording.id} className="pt-4 first:pt-0 space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="space-y-1">
+                          {isMerged && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                              🎛️ MULTI-STREAM MERGED
+                            </span>
+                          )}
+                          <h3 className="text-sm font-semibold text-ink leading-snug">{recording.title}</h3>
+                          <span className="text-xs text-mute block">
+                            Duration: {recording.duration_seconds ? `${recording.duration_seconds.toFixed(1)}s` : 'Unknown'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-mute whitespace-nowrap">
+                            {new Date(recording.inserted_at).toLocaleDateString()}
+                          </span>
+                          <button
+                            onClick={() => deleteRecording(recording.id)}
+                            className="text-xs opacity-60 hover:opacity-100 transition-opacity"
+                            title="Delete recording"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-mute whitespace-nowrap">
-                          {new Date(recording.inserted_at).toLocaleDateString()}
-                        </span>
-                        <button
-                          onClick={() => deleteRecording(recording.id)}
-                          className="text-xs opacity-60 hover:opacity-100 transition-opacity"
-                          title="Delete recording"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
                     <audio src={recording.url.startsWith('http') ? recording.url : `${API_URL}${recording.url}`} controls className="w-full h-8 scale-95 origin-left" />
                     {recording.summary && (
                       <div className="text-[11px] bg-canvas p-2 border border-hairline rounded-lg text-body">
@@ -1183,7 +1196,8 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                ))}
+                )
+              })}
               </div>
             )}
           </div>

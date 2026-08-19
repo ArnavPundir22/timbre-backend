@@ -53,7 +53,6 @@ defmodule TimbreWeb.RoomChannel do
   # When recording stops, host sends "stop_recording"
   def handle_in("stop_recording", params, socket) do
     room_id = socket.assigns.room_id
-    title = Map.get(params, "title", "Merged Multiplayer Session")
     dir = uploads_dir()
 
     # Find ALL temp raw audio files created for this room session
@@ -107,15 +106,19 @@ defmodule TimbreWeb.RoomChannel do
         "Multiplayer voice session recording."
       end
 
-    summary =
-      if transcripts != "" do
-        "Multiplayer mixed session. Highlights: " <> String.slice(transcript, 0, 150) <> "..."
-      else
-        "Multiplayer mixed session of #{Float.round(duration, 1)}s duration."
+    speaker_count = max(1, length(paths_to_mix))
+
+    formatted_title =
+      case Map.get(params, "title") do
+        t when is_binary(t) and t != "" -> t
+        _ -> "🎛️ Merged Multi-User Session (#{speaker_count} Speakers)"
       end
 
+    summary =
+      "✨ Multi-Stream Merged Recording: Combined PCM audio streams from #{speaker_count} participant(s) over Phoenix Channels into a single merged clip (#{Float.round(duration, 1)}s)."
+
     attrs = %{
-      "title" => title,
+      "title" => formatted_title,
       "filename" => unique_filename,
       "duration_seconds" => duration,
       "transcript" => transcript,
