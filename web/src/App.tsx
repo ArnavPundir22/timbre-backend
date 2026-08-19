@@ -82,19 +82,62 @@ export default function App() {
       .catch(() => setWasmOk(false))
   }, [])
 
-  // Check API & load recordings from Phoenix Backend
+  // Save new recording to local storage cache
+  const saveToLocalStorage = (newRec: Recording) => {
+    try {
+      const stored = localStorage.getItem('timbre_recordings')
+      const existing: Recording[] = stored ? JSON.parse(stored) : []
+      const filtered = existing.filter((r) => String(r.id) !== String(newRec.id))
+      const updated = [newRec, ...filtered]
+      localStorage.setItem('timbre_recordings', JSON.stringify(updated))
+    } catch (e) {}
+  }
+
+  // Remove deleted recording from local storage cache
+  const removeFromLocalStorage = (id: string) => {
+    try {
+      const stored = localStorage.getItem('timbre_recordings')
+      if (stored) {
+        const existing: Recording[] = JSON.parse(stored)
+        const updated = existing.filter((r) => String(r.id) !== String(id))
+        localStorage.setItem('timbre_recordings', JSON.stringify(updated))
+      }
+    } catch (e) {}
+  }
+
+  // Check API & load recordings from Phoenix Backend + Local Storage
   const loadRecordings = () => {
+    let localSaved: Recording[] = []
+    try {
+      const stored = localStorage.getItem('timbre_recordings')
+      if (stored) {
+        localSaved = JSON.parse(stored)
+      }
+    } catch (e) {}
+
     fetch(`${API_URL}/api/recordings`)
       .then((r) => r.json())
       .then((res) => {
         const formatted = (res.data || []).map((rec: any) => ({
           ...rec,
-          url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`
+          url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
         }))
-        setRecordings(formatted)
+
+        const combinedMap = new Map<string, Recording>()
+        localSaved.forEach((r) => combinedMap.set(String(r.id), r))
+        formatted.forEach((r: Recording) => combinedMap.set(String(r.id), r))
+
+        const mergedList = Array.from(combinedMap.values()).sort(
+          (a, b) => new Date(b.inserted_at).getTime() - new Date(a.inserted_at).getTime()
+        )
+
+        setRecordings(mergedList)
         setApiOk(true)
       })
-      .catch(() => setApiOk(false))
+      .catch(() => {
+        setRecordings(localSaved)
+        setApiOk(false)
+      })
   }
 
   useEffect(() => {
@@ -379,6 +422,7 @@ export default function App() {
           ...rec,
           url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
         }
+        saveToLocalStorage(formatted)
         setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
       }
       loadRecordings()
@@ -476,6 +520,7 @@ export default function App() {
               ...rec,
               url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
             }
+            saveToLocalStorage(formatted)
             setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
           }
           loadRecordings()
@@ -578,6 +623,16 @@ export default function App() {
       })
 
       if (response.ok) {
+        const res = await response.json()
+        if (res && res.data) {
+          const rec = res.data
+          const formatted = {
+            ...rec,
+            url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
+          }
+          saveToLocalStorage(formatted)
+          setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
+        }
         setRawPCM(null)
         setRecordingTitle('')
         loadRecordings()
@@ -592,7 +647,7 @@ export default function App() {
     }
   }
 
-  // Delete recording from backend
+  // Delete recording from backend & local storage
   const deleteRecording = async (id: string) => {
     if (!confirm('Are you sure you want to delete this recording?')) return
 
@@ -601,7 +656,9 @@ export default function App() {
         method: 'DELETE',
       })
 
-      if (response.ok) {
+      if (response.ok || response.status === 404) {
+        removeFromLocalStorage(id)
+        setRecordings((prev) => prev.filter((r) => String(r.id) !== String(id)))
         loadRecordings()
       } else {
         alert('Failed to delete recording.')
