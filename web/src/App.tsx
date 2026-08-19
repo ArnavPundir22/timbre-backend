@@ -372,7 +372,15 @@ export default function App() {
       }
     })
 
-    channel.on('recording_merged', () => {
+    channel.on('recording_merged', (payload: any) => {
+      if (payload && payload.recording) {
+        const rec = payload.recording
+        const formatted = {
+          ...rec,
+          url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
+        }
+        setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
+      }
       loadRecordings()
       setIsMultiplayerRecording(false)
     })
@@ -462,6 +470,14 @@ export default function App() {
         .push('stop_recording', { title: `Multiplayer Session (${participants.length || 1} speakers)` })
         .receive('ok', (res: any) => {
           console.log('Recording merged successfully via WebSockets:', res)
+          if (res && res.recording) {
+            const rec = res.recording
+            const formatted = {
+              ...rec,
+              url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
+            }
+            setRecordings((prev) => [formatted, ...prev.filter((r) => r.id !== rec.id)])
+          }
           loadRecordings()
           setIsMultiplayerRecording(false)
           setIsUploading(false)
