@@ -16,6 +16,8 @@ defmodule Timbre do
 
   def get_recording!(id), do: Repo.get!(Recording, id)
 
+  def get_recording(id), do: Repo.get(Recording, id)
+
   def create_recording(attrs \\ %{}) do
     %Recording{}
     |> Recording.changeset(attrs)

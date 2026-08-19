@@ -90,32 +90,47 @@ defmodule TimbreWeb.RecordingController do
   end
 
   def show(conn, %{"id" => id}) do
-    recording = Timbre.get_recording!(id)
-    file_path = Path.join(uploads_dir(), recording.filename)
+    case Timbre.get_recording(id) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(TimbreWeb.ErrorJSON)
+        |> render("404.json")
 
-    if File.exists?(file_path) do
-      conn
-      |> put_resp_content_type("audio/wav")
-      |> send_file(200, file_path)
-    else
-      conn
-      |> put_status(:not_found)
-      |> put_view(TimbreWeb.ErrorJSON)
-      |> render("404.json")
+      recording ->
+        file_path = Path.join(uploads_dir(), recording.filename)
+
+        if File.exists?(file_path) do
+          conn
+          |> put_resp_content_type("audio/wav")
+          |> send_file(200, file_path)
+        else
+          conn
+          |> put_status(:not_found)
+          |> put_view(TimbreWeb.ErrorJSON)
+          |> render("404.json")
+        end
     end
   end
 
   def delete(conn, %{"id" => id}) do
-    recording = Timbre.get_recording!(id)
-    file_path = Path.join(uploads_dir(), recording.filename)
+    case Timbre.get_recording(id) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(TimbreWeb.ErrorJSON)
+        |> render("404.json")
 
-    if File.exists?(file_path) do
-      File.rm!(file_path)
+      recording ->
+        file_path = Path.join(uploads_dir(), recording.filename)
+
+        if File.exists?(file_path) do
+          File.rm!(file_path)
+        end
+
+        {:ok, _recording} = Timbre.delete_recording(recording)
+        send_resp(conn, 204, "")
     end
-
-    {:ok, _recording} = Timbre.delete_recording(recording)
-
-    send_resp(conn, 204, "")
   end
 
   defp uploads_dir do
