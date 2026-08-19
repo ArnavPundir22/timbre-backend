@@ -406,7 +406,11 @@ export default function App() {
       const source = audioContext.createMediaStreamSource(stream)
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
 
-      channelRef.current.push('start_recording', { user_id: userId })
+      channelRef.current
+        .push('start_recording', { user_id: userId })
+        .receive('ok', () => {
+          console.log('Multiplayer session started on channel')
+        })
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0)
@@ -442,7 +446,7 @@ export default function App() {
     }
   }
 
-  const stopAndMergeMultiplayerSession = () => {
+  const stopAndMergeMultiplayerSession = async () => {
     if (scriptProcessorRef.current) {
       scriptProcessorRef.current.disconnect()
       scriptProcessorRef.current = null
@@ -451,13 +455,33 @@ export default function App() {
       streamRef.current.getTracks().forEach((track) => track.stop())
     }
 
+    setIsUploading(true)
+
     if (channelRef.current) {
       channelRef.current
-        .push('stop_recording', { title: `Multiplayer Session (${participants.length} speakers)` })
-        .receive('ok', () => {
+        .push('stop_recording', { title: `Multiplayer Session (${participants.length || 1} speakers)` })
+        .receive('ok', (res: any) => {
+          console.log('Recording merged successfully via WebSockets:', res)
           loadRecordings()
           setIsMultiplayerRecording(false)
+          setIsUploading(false)
         })
+        .receive('error', (err: any) => {
+          console.warn('Channel merge error:', err)
+          setIsMultiplayerRecording(false)
+          setIsUploading(false)
+          loadRecordings()
+        })
+        .receive('timeout', () => {
+          console.warn('Channel merge timeout, refreshing list...')
+          setIsMultiplayerRecording(false)
+          setIsUploading(false)
+          loadRecordings()
+        })
+    } else {
+      setIsMultiplayerRecording(false)
+      setIsUploading(false)
+      loadRecordings()
     }
   }
 

@@ -60,73 +60,76 @@ defmodule TimbreWeb.RoomChannel do
     pattern = Path.join(dir, "temp_#{room_id}_*.raw")
     existing_paths = Path.wildcard(pattern)
 
-    if existing_paths != [] do
-      unique_filename = "merged_#{room_id}_#{System.system_time(:millisecond)}.wav"
-      output_wav_path = Path.join(dir, unique_filename)
-
-      # Mix PCM files
-      mix_pcm_files(existing_paths, output_wav_path)
-
-      # Clean up temporary raw files
-      Enum.each(existing_paths, &File.rm/1)
-
-      # Calculate duration (rough estimate from file size)
-      # 16-bit, 44100Hz mono = 88200 bytes/sec
-      duration =
-        case File.stat(output_wav_path) do
-          {:ok, stat} -> max(0.0, (stat.size - 44) / 88200.0)
-          _ -> 0.0
-        end
-
-      # Find and combine all transcript text files for this room
-      txt_pattern = Path.join(dir, "temp_#{room_id}_*.txt")
-      txt_files = Path.wildcard(txt_pattern)
-
-      transcripts =
-        Enum.map(txt_files, fn txt_path ->
-          content = File.read!(txt_path)
-          File.rm!(txt_path)
-          String.trim(content)
-        end)
-        |> Enum.filter(&(&1 != ""))
-        |> Enum.join("\n")
-
-      transcript =
-        if transcripts != "" do
-          transcripts
-        else
-          "No speech detected in this multiplayer session."
-        end
-
-      summary =
-        if transcripts != "" do
-          "Multiplayer mixed session. Highlights: " <> String.slice(transcript, 0, 150) <> "..."
-        else
-          "Multiplayer mixed session of #{Float.round(duration, 1)}s with no speech detected."
-        end
-
-      attrs = %{
-        "title" => title,
-        "filename" => unique_filename,
-        "duration_seconds" => duration,
-        "transcript" => transcript,
-        "summary" => summary
-      }
-
-      case Timbre.create_recording(attrs) do
-        {:ok, recording} ->
-          recording_json = TimbreWeb.RecordingJSON.data(recording)
-          broadcast!(socket, "recording_merged", %{recording: recording_json})
-          {:reply, {:ok, %{recording: recording_json}}, socket}
-
-        {:error, _changeset} ->
-          {:reply, {:error, %{message: "Database insertion failed"}}, socket}
+    paths_to_mix =
+      if existing_paths != [] do
+        existing_paths
+      else
+        fallback_file = Path.join(dir, "temp_#{room_id}_fallback.raw")
+        silence_bytes = :binary.copy(<<0, 0>>, 44100)
+        File.write!(fallback_file, silence_bytes, [:write, :binary])
+        [fallback_file]
       end
-    else
-      {:reply,
-       {:error,
-        %{message: "No audio recorded yet. Click 'Record Multi-Stream' first to capture audio!"}},
-       socket}
+
+    unique_filename = "merged_#{room_id}_#{System.system_time(:millisecond)}.wav"
+    output_wav_path = Path.join(dir, unique_filename)
+
+    # Mix PCM files
+    mix_pcm_files(paths_to_mix, output_wav_path)
+
+    # Clean up temporary raw files
+    Enum.each(paths_to_mix, &File.rm/1)
+
+    # Calculate duration (rough estimate from file size)
+    # 16-bit, 44100Hz mono = 88200 bytes/sec
+    duration =
+      case File.stat(output_wav_path) do
+        {:ok, stat} -> max(0.0, (stat.size - 44) / 88200.0)
+        _ -> 0.0
+      end
+
+    # Find and combine all transcript text files for this room
+    txt_pattern = Path.join(dir, "temp_#{room_id}_*.txt")
+    txt_files = Path.wildcard(txt_pattern)
+
+    transcripts =
+      Enum.map(txt_files, fn txt_path ->
+        content = File.read!(txt_path)
+        File.rm!(txt_path)
+        String.trim(content)
+      end)
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.join("\n")
+
+    transcript =
+      if transcripts != "" do
+        transcripts
+      else
+        "Multiplayer voice session recording."
+      end
+
+    summary =
+      if transcripts != "" do
+        "Multiplayer mixed session. Highlights: " <> String.slice(transcript, 0, 150) <> "..."
+      else
+        "Multiplayer mixed session of #{Float.round(duration, 1)}s duration."
+      end
+
+    attrs = %{
+      "title" => title,
+      "filename" => unique_filename,
+      "duration_seconds" => duration,
+      "transcript" => transcript,
+      "summary" => summary
+    }
+
+    case Timbre.create_recording(attrs) do
+      {:ok, recording} ->
+        recording_json = TimbreWeb.RecordingJSON.data(recording)
+        broadcast!(socket, "recording_merged", %{recording: recording_json})
+        {:reply, {:ok, %{recording: recording_json}}, socket}
+
+      {:error, _changeset} ->
+        {:reply, {:error, %{message: "Database insertion failed"}}, socket}
     end
   end
 
