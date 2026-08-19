@@ -22,6 +22,15 @@ interface Recording {
   summary?: string
   inserted_at: string
   url: string
+  dataUrl?: string
+}
+
+const blobToDataURL = (blob: Blob): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.readAsDataURL(blob)
+  })
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://timbre-api-1eny.onrender.com'
@@ -531,6 +540,7 @@ export default function App() {
 
           const duration = mergedPCM.length / sampleRate
           const wavBlob = bufferToWav(mergedPCM, sampleRate)
+          const dataUrl = await blobToDataURL(wavBlob)
           const file = new File([wavBlob], `multiplayer_${Date.now()}.wav`, { type: 'audio/wav' })
 
           const formData = new FormData()
@@ -556,6 +566,7 @@ export default function App() {
               const rec = data.data
               const formatted = {
                 ...rec,
+                dataUrl: dataUrl,
                 url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
               }
               saveToLocalStorage(formatted)
@@ -666,6 +677,7 @@ export default function App() {
     if (shouldNoiseGate) noise_gate(processed, noiseGateThreshold)
 
     const wavBlob = bufferToWav(processed, sampleRate)
+    const dataUrl = await blobToDataURL(wavBlob)
     const file = new File([wavBlob], `${Date.now()}.wav`, { type: 'audio/wav' })
 
     const duration = rawPCM.length / sampleRate
@@ -697,6 +709,7 @@ export default function App() {
           const rec = res.data
           const formatted = {
             ...rec,
+            dataUrl: dataUrl,
             url: rec.url.startsWith('http') ? rec.url : `${API_URL}${rec.url}`,
           }
           saveToLocalStorage(formatted)
@@ -1182,7 +1195,11 @@ export default function App() {
                           </button>
                         </div>
                       </div>
-                    <audio src={recording.url.startsWith('http') ? recording.url : `${API_URL}${recording.url}`} controls className="w-full h-8 scale-95 origin-left" />
+                    <audio
+                      src={recording.dataUrl || (recording.url.startsWith('http') ? recording.url : `${API_URL}${recording.url}`)}
+                      controls
+                      className="w-full h-8 scale-95 origin-left"
+                    />
                     {recording.summary && (
                       <div className="text-[11px] bg-canvas p-2 border border-hairline rounded-lg text-body">
                         <span className="font-semibold text-ink">AI Summary: </span>
